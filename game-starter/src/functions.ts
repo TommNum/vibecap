@@ -1,12 +1,13 @@
 import { config } from 'dotenv';
 import { resolve } from 'path';
 
-// Load environment variables
-config({ path: resolve(__dirname, '../.env') });
-
-// Verify environment variables before imports
-if (!process.env.OPENAI_API_KEY) {
-    throw new Error('OPENAI_API_KEY is missing in .env file');
+// Load environment variables from .env file only in development
+// Railway automatically provides environment variables in production
+if (process.env.NODE_ENV !== 'production' && !process.env.RAILWAY_ENVIRONMENT) {
+    console.log('Loading environment variables from .env file');
+    config({ path: resolve(__dirname, '../.env') });
+} else {
+    console.log('Using environment variables from Railway');
 }
 
 import {
