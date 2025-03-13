@@ -31,7 +31,8 @@ const questioningFunction = new GameFunction({
       const { questionType, previousResponses, questionCount } = args;
       
       // Check if we've reached question limit
-      if (questionCount >= 15) {
+      const count = parseInt(questionCount as string) || 0;
+      if (count >= 15) {
         return new ExecutableGameFunctionResponse(
           ExecutableGameFunctionStatus.Done,
           "Question limit reached, proceed to closing"
@@ -83,13 +84,14 @@ const questioningFunction = new GameFunction({
         ExecutableGameFunctionStatus.Done,
         JSON.stringify({
           message: message,
-          questionCount: questionCount + 1
+          questionCount: count + 1
         })
       );
-    } catch (e) {
+    } catch (e: unknown) {
+      const errorMessage = e instanceof Error ? e.message : 'Unknown error';
       return new ExecutableGameFunctionResponse(
         ExecutableGameFunctionStatus.Failed,
-        "Failed to ask question: " + e.message
+        "Failed to ask question: " + errorMessage
       );
     }
   },
@@ -114,10 +116,11 @@ const replyMessageFunction = new GameFunction({
         ExecutableGameFunctionStatus.Done,
         `Replied with message: ${args.message}`
       );
-    } catch (e) {
+    } catch (e: unknown) {
+      const errorMessage = e instanceof Error ? e.message : 'Unknown error';
       return new ExecutableGameFunctionResponse(
         ExecutableGameFunctionStatus.Failed,
-        "Failed to reply to message: " + e.message
+        "Failed to reply to message: " + errorMessage
       );
     }
   },
@@ -139,7 +142,12 @@ const closingFunction = new GameFunction({
       
       // If conversation is already closed, remind the user
       if (isClosed) {
-        const reminder = `I'm sorry, but our evaluation session has already concluded. Your application ID is ${conversationData.appId}. Thank you again for your time!`;
+        const conversationObj = typeof conversationData === 'string' 
+          ? JSON.parse(conversationData) 
+          : conversationData || {};
+        
+        const appId = conversationObj.appId || `VC-${Date.now().toString(36)}-CLOSED`;
+        const reminder = `I'm sorry, but our evaluation session has already concluded. Your application ID is ${appId}. Thank you again for your time!`;
         
         // Send the reminder via Telegram webhook
         logger(`Sending closure reminder: ${reminder}`);
@@ -185,10 +193,11 @@ const closingFunction = new GameFunction({
           closed: true
         })
       );
-    } catch (e) {
+    } catch (e: unknown) {
+      const errorMessage = e instanceof Error ? e.message : 'Unknown error';
       return new ExecutableGameFunctionResponse(
         ExecutableGameFunctionStatus.Failed,
-        "Failed to close conversation: " + e.message
+        "Failed to close conversation: " + errorMessage
       );
     }
   },
@@ -217,14 +226,13 @@ const processUserMessageFunction = new GameFunction({
       }
       
       // Check if this is a start command
-      if (message.toLowerCase() === '/start') {
+      if (message && typeof message === 'string' && message.toLowerCase() === '/start') {
         return new ExecutableGameFunctionResponse(
           ExecutableGameFunctionStatus.Done,
           JSON.stringify({ 
             action: "start_conversation", 
             questionType: "welcome",
             conversationState: {
-              ...conversationState,
               questionCount: 0,
               responses: []
             }
@@ -233,13 +241,18 @@ const processUserMessageFunction = new GameFunction({
       }
       
       // Store the user's response
+      const stateObj = typeof conversationState === 'string'
+        ? JSON.parse(conversationState)
+        : conversationState || {};
+      
       const updatedState = {
-        ...conversationState,
-        responses: [...(conversationState.responses || []), message]
+        ...stateObj,
+        responses: [...(stateObj.responses || []), message]
       };
       
       // Determine if we've reached question limit
-      if (updatedState.questionCount >= 15) {
+      const questionCount = updatedState.questionCount || 0;
+      if (questionCount >= 15) {
         return new ExecutableGameFunctionResponse(
           ExecutableGameFunctionStatus.Done,
           JSON.stringify({ 
@@ -275,10 +288,11 @@ const processUserMessageFunction = new GameFunction({
           conversationState: updatedState
         })
       );
-    } catch (e) {
+    } catch (e: unknown) {
+      const errorMessage = e instanceof Error ? e.message : 'Unknown error';
       return new ExecutableGameFunctionResponse(
         ExecutableGameFunctionStatus.Failed,
-        "Failed to process user message: " + e.message
+        "Failed to process user message: " + errorMessage
       );
     }
   },

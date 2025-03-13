@@ -1,5 +1,5 @@
 import { GameAgent, LLMModel } from "@virtuals-protocol/game";
-import { ventureAnalystWorker, scoreWorker, closingWorker } from "./worker";
+import { ventureAnalystWorker } from "./worker";
 import dotenv from "dotenv";
 dotenv.config();
 
