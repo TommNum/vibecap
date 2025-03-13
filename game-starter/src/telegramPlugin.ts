@@ -29,6 +29,10 @@ class TelegramPlugin {
             "A worker that executes tasks within Telegram. It can send messages, send media, create poll, pin messages, and delete messages.";
 
         this.telegramClient = new TelegramBot(options.credentials.botToken, { webHook: { port: 0, host: '0.0.0.0' } });
+
+        if (!process.env.WEBHOOK_URL) {
+            throw new Error('Missing webhookurl')
+        }
         this.telegramClient.setWebHook(process.env.WEBHOOK_URL ?? '')
             .then(() => {
                 console.log('Webhook set successfully');
