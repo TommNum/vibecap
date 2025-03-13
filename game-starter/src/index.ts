@@ -4,7 +4,7 @@ async function main() {
     try {
         // Initialize the agent
         await activity_agent.init();
-        await activity_agent.initWorkers()
+        // await activity_agent.initWorkers()
 
         // Run the agent
         while (true) {
