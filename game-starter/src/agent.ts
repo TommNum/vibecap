@@ -29,7 +29,7 @@ const getAgentState = async () => {
 };
 
 // Create a worker with the functions
-const telegramPlugin = new TelegramPlugin({
+export const telegramPlugin = new TelegramPlugin({
     credentials: {
         botToken: process.env.TELEGRAM_BOT_TOKEN,
     },
@@ -38,14 +38,7 @@ const telegramPlugin = new TelegramPlugin({
     name: "Venture Analyst"
 });
 
-telegramPlugin.onMessage(async (msg) => {
-    console.log('Custom message handler:', msg);
-});
 
-telegramPlugin.onPollAnswer((pollAnswer) => {
-    console.log('Custom poll answer handler:', pollAnswer);
-    // You can process the poll answer as needed
-});
 
 export const activity_agent = new GameAgent(process.env.API_KEY, {
     name: "vibecap_associate",
@@ -106,15 +99,6 @@ You should be priorirtizing the AnalystWorker as long as you have a response wai
     }),],
     llmModel: "Qwen2.5-72B-Instruct", // LLMModel.Qwen_2_5_72B_Instruct
     getAgentState
-});
-
-telegramPlugin.onMessage(async (msg) => {
-    const agentTgWorker = activity_agent.getWorkerById(telegramPlugin.getWorker().id);
-    const task = "Reply to chat id: " + msg.chat.id + " and the incoming is message: " + msg.text + " and the message id is: " + msg.message_id;
-
-    await agentTgWorker.runTask(task, {
-        verbose: true, // Optional: Set to true to log each step
-    });
 });
 
 activity_agent.setLogger((agent: GameAgent, msg: string) => {
