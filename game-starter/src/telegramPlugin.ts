@@ -28,8 +28,27 @@ class TelegramPlugin {
             options.description ||
             "A worker that executes tasks within Telegram. It can send messages, send media, create poll, pin messages, and delete messages.";
 
-        this.telegramClient = new TelegramBot(options.credentials.botToken, { polling: true });
-        // this.telegramClient.setWebHook(process.env.WEBHOOK_URL ?? '')
+        this.telegramClient = new TelegramBot(options.credentials.botToken, { webHook: { port: 0, host: '0.0.0.0' } });
+        this.telegramClient.setWebHook(process.env.WEBHOOK_URL ?? '')
+            .then(() => {
+                console.log('Webhook set successfully');
+                // Add verification to see if webhook is properly set
+                return this.telegramClient.getWebHookInfo();
+            })
+            .then((info) => {
+                console.log('Webhook info:', {
+                    url: info.url,
+                    hasCustomCertificate: info.has_custom_certificate,
+                    pendingUpdateCount: info.pending_update_count,
+                    maxConnections: info.max_connections,
+                    ipAddress: info.ip_address
+                });
+            })
+            .catch(error => {
+                console.error('Failed to set webhook:', error);
+                throw error; // Re-throw to halt initialization
+            });
+
         this.telegramClient.on('polling_error', (error) => {
             console.log(error);  // => 'EFATAL'
         });
