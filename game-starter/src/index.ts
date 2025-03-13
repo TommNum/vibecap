@@ -7,7 +7,7 @@ async function main() {
 
         // Run the agent
         while (true) {
-            await activity_agent.step({ verbose: true });
+            // await activity_agent.step({ verbose: true });
         }
     } catch (error) {
         console.error("Error running activity recommender:", error);
