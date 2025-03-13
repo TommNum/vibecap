@@ -15,163 +15,278 @@ import {
     ExecutableGameFunctionResponse,
     ExecutableGameFunctionStatus,
 } from "@virtuals-protocol/game";
-import OpenAI from 'openai';
 
-// Initialize OpenAI
-const openai = new OpenAI({
-    apiKey: process.env.OPENAI_API_KEY,
-    baseURL: process.env.OPENAI_BASE_URL || 'https://api.openai.com/v1' // Default to OpenAI's standard URL
-});
-
-// Example function that shows current state
-export const getStateFunction = new GameFunction({
-    name: "get_state",
-    description: "Get current agent state",
-    args: [] as const,
-    executable: async (args, logger) => {
-        try {
-            return new ExecutableGameFunctionResponse(
-                ExecutableGameFunctionStatus.Done,
-                "Current state retrieved successfully"
-            );
-        } catch (e) {
-            return new ExecutableGameFunctionResponse(
-                ExecutableGameFunctionStatus.Failed,
-                "Failed to get state"
-            );
-        }
-    }
-});
-
-export const setStateFunction = new GameFunction({
-    name: "set_state",
-    description: "Set current agent state",
-    args: [] as const,
-    executable: async (args, logger) => {
+// Function to send questions and manage conversation flow
+const questioningFunction = new GameFunction({
+  name: "ask_question",
+  description: "Ask the user questions about their startup and process their responses",
+  args: [
+    { name: "questionType", description: "Type of question to ask (welcome, pitch, market, traction, team, technology, revenue, problem)" },
+    { name: "previousResponses", description: "Previous responses from the user to avoid duplicate questions" },
+    { name: "questionCount", description: "Current count of questions asked to track limit" }
+  ] as const,
+  
+  executable: async (args, logger) => {
+    try {
+      const { questionType, previousResponses, questionCount } = args;
+      
+      // Check if we've reached question limit
+      if (questionCount >= 15) {
         return new ExecutableGameFunctionResponse(
-            ExecutableGameFunctionStatus.Done,
-            "State set successfully"
+          ExecutableGameFunctionStatus.Done,
+          "Question limit reached, proceed to closing"
         );
-    }
-});
-
-// Function to get location data
-export const getLocationFunction = new GameFunction({
-    name: "get_location",
-    description: "Get current location from IP",
-    args: [] as const,
-    executable: async (args, logger) => {
-        try {
-            // Using ipinfo.io for geolocation (free tier, no API key needed)
-            const response = await fetch('https://ipinfo.io/json');
-            const data = await response.json();
-            
-            if (data.error) {
-                throw new Error(data.error.message || 'Failed to get location');
-            }
-
-            // Split timezone into region/city
-            const [region, city] = (data.timezone || '').split('/');
-            
-            logger(`Location detected: ${data.city}, ${data.country}`);
-            
-            return new ExecutableGameFunctionResponse(
-                ExecutableGameFunctionStatus.Done,
-                JSON.stringify({
-                    city: data.city,
-                    country: data.country,
-                    country_name: data.country,
-                    region: data.region,
-                    lat: data.loc?.split(',')[0],
-                    lon: data.loc?.split(',')[1],
-                    timezone: data.timezone,
-                    current_time: new Date().toLocaleString('en-US', { timeZone: data.timezone })
-                })
-            );
-        } catch (e) {
-            return new ExecutableGameFunctionResponse(
-                ExecutableGameFunctionStatus.Failed,
-                `Failed to fetch location data: ${e instanceof Error ? e.message : 'Unknown error'}`
-            );
-        }
-    }
-});
-
-// Function to get weather data
-export const getWeatherFunction = new GameFunction({
-    name: "get_weather",
-    description: "Get current weather for a location",
-    args: [
-        { name: "city", description: "City name" },
-        { name: "country", description: "Country code (e.g., US)" }
-    ] as const,
-    executable: async (args, logger) => {
-        try {
-            const API_KEY = process.env.WEATHER_API_KEY;
-            const response = await fetch(
-                `https://api.openweathermap.org/data/2.5/weather?q=${args.city},${args.country}&units=metric&appid=${API_KEY}`
-            );
-            const data = await response.json();
-            
-            if (data.cod !== 200) {
-                throw new Error(data.message || 'Failed to fetch weather data');
-            }
-            
-            return new ExecutableGameFunctionResponse(
-                ExecutableGameFunctionStatus.Done,
-                JSON.stringify({
-                    temp: data.main.temp,
-                    feels_like: data.main.feels_like,
-                    humidity: data.main.humidity,
-                    conditions: data.weather[0].main,
-                    description: data.weather[0].description,
-                    wind_speed: data.wind.speed
-                })
-            );
-        } catch (e) {
-            return new ExecutableGameFunctionResponse(
-                ExecutableGameFunctionStatus.Failed,
-                `Failed to fetch weather data: ${e instanceof Error ? e.message : 'Unknown error'}`
-            );
-        }
-    }
-});
-
-// Function to recommend activities using OpenAI
-export const recommendActivitiesFunction = new GameFunction({
-    name: "recommend_activities",
-    description: "Recommend activities based on weather and location",
-    args: [
-        { name: "weather", description: "Weather in temrms of tempearture only" },
-        { name: "location", description: "the city and country" }
-    ] as const,
-    executable: async (args, logger) => {
+      }
+      
+      let message = "";
+      
+      // Generate appropriate question based on type and context
+      if (questionType === "welcome") {
+        message = "Hi! I am Wendy, your Associate at Vibe Capital. I'd like to learn about your startup to evaluate its potential. Could you start by telling me your startup's name and a 1-2 sentence description of what you do?";
+      } else {
+        // Generate dynamic, contextual questions based on previous responses
+        // This will rely on the LLM's ability to formulate appropriate questions
+        // No hardcoded word bank - the LLM should generate these based on context
         
-            // console.log("ARGS", args);
-            
-            // Create prompt for OpenAI
-            const prompt = `Given the following weather:${args.weather} in ${args.location}:
-
-            Please recommend 5 suitable activities for this weather and location...`;
-
-            const completion = await openai.chat.completions.create({
-                messages: [{ role: "user", content: prompt }],
-                model: "gpt-3.5-turbo",
-                temperature: 0.7,
-                max_tokens: 500
-            });
-
-            const recommendations = completion.choices[0].message.content;
-
-            // console.log("RECOMMENDATIONS", recommendations);
-            
-            logger("Generated activity recommendations using AI");
-
-            return new ExecutableGameFunctionResponse(
-                ExecutableGameFunctionStatus.Done,
-                `Based on the current conditions in ${args.location}, here are some recommended activities:\n\n${recommendations}`
-            );
-        
+        // Example logic for different question types (the actual implementation would rely on LLM)
+        switch (questionType) {
+          case "market":
+            message = "Based on what you've shared, I'd like to understand more about your target market. What's the total addressable market size and how do you plan to capture it?";
+            break;
+          case "traction":
+            message = "Let's talk about traction. How many daily active users do you have now, and what growth are you projecting in the next 6 months?";
+            break;
+          case "team":
+            message = "Could you tell me about your founding team's background and relevant expertise in this domain?";
+            break;
+          case "technology":
+            message = "What technological innovations set your product apart, and how have you designed your onboarding process to minimize friction?";
+            break;
+          case "revenue":
+            message = "Regarding your business model, what's your current revenue situation and monetization strategy going forward?";
+            break;
+          case "problem":
+            message = "What specific problem are you solving, and how painful is this problem for your target users?";
+            break;
+          default:
+            message = "Could you elaborate more on your startup's vision and how you plan to execute it?";
+        }
+      }
+      
+      // Use reply_message function to send the question
+      // In a real implementation, you would call the actual Telegram API here
+      logger(`Sending question to user: ${message}`);
+      
+      // Here you would integrate with the Telegram webhook to send the message
+      
+      return new ExecutableGameFunctionResponse(
+        ExecutableGameFunctionStatus.Done,
+        JSON.stringify({
+          message: message,
+          questionCount: questionCount + 1
+        })
+      );
+    } catch (e) {
+      return new ExecutableGameFunctionResponse(
+        ExecutableGameFunctionStatus.Failed,
+        "Failed to ask question: " + e.message
+      );
     }
+  },
 });
 
+// Function to reply to user messages
+const replyMessageFunction = new GameFunction({
+  name: "reply_message",
+  description: "Reply to a user message",
+  args: [
+    { name: "message", description: "The message to reply" }
+  ] as const,
+
+  executable: async (args, logger) => {
+    try {
+      // Log the message being sent
+      logger(`Replying to message: ${args.message}`);
+
+      // Here you would integrate with the Telegram webhook to send the message
+      
+      return new ExecutableGameFunctionResponse(
+        ExecutableGameFunctionStatus.Done,
+        `Replied with message: ${args.message}`
+      );
+    } catch (e) {
+      return new ExecutableGameFunctionResponse(
+        ExecutableGameFunctionStatus.Failed,
+        "Failed to reply to message: " + e.message
+      );
+    }
+  },
+});
+
+// Function to close the conversation and provide evaluation
+const closingFunction = new GameFunction({
+  name: "close_conversation",
+  description: "Close the conversation and provide final evaluation",
+  args: [
+    { name: "conversationData", description: "All collected data from the conversation" },
+    { name: "isForced", description: "Whether this is a forced close due to question limit or user requested", optional: true },
+    { name: "isClosed", description: "Whether the conversation is already closed", optional: true }
+  ] as const,
+  
+  executable: async (args, logger) => {
+    try {
+      const { conversationData, isForced, isClosed } = args;
+      
+      // If conversation is already closed, remind the user
+      if (isClosed) {
+        const reminder = `I'm sorry, but our evaluation session has already concluded. Your application ID is ${conversationData.appId}. Thank you again for your time!`;
+        
+        // Send the reminder via Telegram webhook
+        logger(`Sending closure reminder: ${reminder}`);
+        
+        return new ExecutableGameFunctionResponse(
+          ExecutableGameFunctionStatus.Done,
+          JSON.stringify({ message: reminder, closed: true })
+        );
+      }
+      
+      // Generate a unique App ID
+      const appId = `VC-${Date.now().toString(36)}-${Math.random().toString(36).substr(2, 5)}`.toUpperCase();
+      
+      // Evaluate the startup based on the conversation data
+      // This would be handled by the LLM's reasoning capabilities
+      
+      // Calculate scores (0-100) based on collected data
+      const executionScore = Math.floor(Math.random() * 31) + 70; // Placeholder for actual evaluation logic
+      const marketScore = Math.floor(Math.random() * 31) + 70;
+      const growthScore = Math.floor(Math.random() * 31) + 70;
+      const returnPotentialScore = Math.floor(Math.random() * 31) + 70;
+      
+      const overallScore = Math.floor((executionScore + marketScore + growthScore + returnPotentialScore) / 4);
+      
+      // Create closing message with App ID and scores
+      const closingMessage = `Thank you for sharing details about your startup! Based on our conversation, I've completed my evaluation.\n\nYour Application ID is: ${appId}\n\nYour venture received an overall rating of ${overallScore}/100, reflecting our assessment of your execution capability, market approach, growth potential, and investment return profile.\n\nThe Vibe Capital team will contact you if there's interest in further discussions. Best of luck with your venture!`;
+      
+      // Send the closing message via Telegram webhook
+      logger(`Sending closing message: ${closingMessage}`);
+      
+      return new ExecutableGameFunctionResponse(
+        ExecutableGameFunctionStatus.Done,
+        JSON.stringify({
+          message: closingMessage,
+          appId: appId,
+          scores: {
+            execution: executionScore,
+            market: marketScore,
+            growth: growthScore,
+            returnPotential: returnPotentialScore,
+            overall: overallScore
+          },
+          closed: true
+        })
+      );
+    } catch (e) {
+      return new ExecutableGameFunctionResponse(
+        ExecutableGameFunctionStatus.Failed,
+        "Failed to close conversation: " + e.message
+      );
+    }
+  },
+});
+
+// Function to process incoming user messages
+const processUserMessageFunction = new GameFunction({
+  name: "process_user_message",
+  description: "Process incoming user messages and determine next action",
+  args: [
+    { name: "message", description: "The message received from the user" },
+    { name: "conversationState", description: "Current state of the conversation including question count, previous responses, etc." },
+    { name: "isClosed", description: "Whether the conversation is already closed", optional: true }
+  ] as const,
+  
+  executable: async (args, logger) => {
+    try {
+      const { message, conversationState, isClosed } = args;
+      
+      // If conversation is closed, use closing function to remind user
+      if (isClosed) {
+        return new ExecutableGameFunctionResponse(
+          ExecutableGameFunctionStatus.Done,
+          JSON.stringify({ action: "remind_closed", conversationState })
+        );
+      }
+      
+      // Check if this is a start command
+      if (message.toLowerCase() === '/start') {
+        return new ExecutableGameFunctionResponse(
+          ExecutableGameFunctionStatus.Done,
+          JSON.stringify({ 
+            action: "start_conversation", 
+            questionType: "welcome",
+            conversationState: {
+              ...conversationState,
+              questionCount: 0,
+              responses: []
+            }
+          })
+        );
+      }
+      
+      // Store the user's response
+      const updatedState = {
+        ...conversationState,
+        responses: [...(conversationState.responses || []), message]
+      };
+      
+      // Determine if we've reached question limit
+      if (updatedState.questionCount >= 15) {
+        return new ExecutableGameFunctionResponse(
+          ExecutableGameFunctionStatus.Done,
+          JSON.stringify({ 
+            action: "close_conversation", 
+            conversationState: updatedState,
+            isForced: true 
+          })
+        );
+      }
+      
+      // Determine next question type based on conversation history
+      // This would rely on the LLM's understanding of the conversation flow
+      let nextQuestionType;
+      
+      if (updatedState.questionCount === 0) {
+        // After welcome, ask about pitch
+        nextQuestionType = "pitch";
+      } else if (updatedState.questionCount === 1) {
+        // After pitch, ask about market
+        nextQuestionType = "market";
+      } else {
+        // For subsequent questions, cycle through the different categories
+        // The actual implementation would be more sophisticated and context-aware
+        const questionTypes = ["traction", "team", "technology", "revenue", "problem"];
+        nextQuestionType = questionTypes[updatedState.questionCount % questionTypes.length];
+      }
+      
+      return new ExecutableGameFunctionResponse(
+        ExecutableGameFunctionStatus.Done,
+        JSON.stringify({ 
+          action: "ask_question", 
+          questionType: nextQuestionType,
+          conversationState: updatedState
+        })
+      );
+    } catch (e) {
+      return new ExecutableGameFunctionResponse(
+        ExecutableGameFunctionStatus.Failed,
+        "Failed to process user message: " + e.message
+      );
+    }
+  },
+});
+
+export {
+  questioningFunction,
+  replyMessageFunction,
+  closingFunction,
+  processUserMessageFunction
+};
