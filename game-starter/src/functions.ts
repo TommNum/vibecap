@@ -4,16 +4,16 @@ import { resolve } from 'path';
 // Load environment variables from .env file only in local development
 // Railway automatically provides environment variables in production/staging
 if (process.env.ENVIRONMENT !== 'production' && process.env.ENVIRONMENT !== 'staging') {
-    console.log('Loading environment variables from .env file for local development');
-    config({ path: resolve(__dirname, '../.env') });
+  console.log('Loading environment variables from .env file for local development');
+  config({ path: resolve(__dirname, '../.env') });
 } else {
-    console.log(`Using environment variables from Railway (${process.env.ENVIRONMENT} environment)`);
+  console.log(`Using environment variables from Railway (${process.env.ENVIRONMENT} environment)`);
 }
 
 import {
-    GameFunction,
-    ExecutableGameFunctionResponse,
-    ExecutableGameFunctionStatus,
+  GameFunction,
+  ExecutableGameFunctionResponse,
+  ExecutableGameFunctionStatus,
 } from "@virtuals-protocol/game";
 
 // Function to send questions and manage conversation flow
@@ -25,11 +25,11 @@ const questioningFunction = new GameFunction({
     { name: "previousResponses", description: "Previous responses from the user to avoid duplicate questions" },
     { name: "questionCount", description: "Current count of questions asked to track limit" }
   ] as const,
-  
+
   executable: async (args, logger) => {
     try {
       const { questionType, previousResponses, questionCount } = args;
-      
+
       // Check if we've reached question limit
       const count = parseInt(questionCount as string) || 0;
       if (count >= 15) {
@@ -38,9 +38,9 @@ const questioningFunction = new GameFunction({
           "Question limit reached, proceed to closing"
         );
       }
-      
+
       let message = "";
-      
+
       // Generate appropriate question based on type and context
       if (questionType === "welcome") {
         message = "Hi! I am Wendy, your Associate at Vibe Capital. I'd like to learn about your startup to evaluate its potential. Could you start by telling me your startup's name and a 1-2 sentence description of what you do?";
@@ -48,7 +48,7 @@ const questioningFunction = new GameFunction({
         // Generate dynamic, contextual questions based on previous responses
         // This will rely on the LLM's ability to formulate appropriate questions
         // No hardcoded word bank - the LLM should generate these based on context
-        
+
         // Example logic for different question types (the actual implementation would rely on LLM)
         switch (questionType) {
           case "market":
@@ -73,13 +73,13 @@ const questioningFunction = new GameFunction({
             message = "Could you elaborate more on your startup's vision and how you plan to execute it?";
         }
       }
-      
+
       // Use reply_message function to send the question
       // In a real implementation, you would call the actual Telegram API here
       logger(`Sending question to user: ${message}`);
-      
+
       // Here you would integrate with the Telegram webhook to send the message
-      
+
       return new ExecutableGameFunctionResponse(
         ExecutableGameFunctionStatus.Done,
         JSON.stringify({
@@ -100,27 +100,34 @@ const questioningFunction = new GameFunction({
 // Function to reply to user messages
 const replyMessageFunction = new GameFunction({
   name: "reply_message",
-  description: "Reply to a user message",
+  description: "Reply to a message",
   args: [
-    { name: "message", description: "The message to reply" }
+    { name: "message", description: "The message to reply" },
+    {
+      name: "media_url",
+      description: "The media url to attach to the message",
+      optional: true,
+    },
   ] as const,
 
   executable: async (args, logger) => {
     try {
-      // Log the message being sent
+      // TODO: Implement replying to message with image
+      if (args.media_url) {
+        logger(`Reply with media: ${args.media_url}`);
+      }
+
+      // TODO: Implement replying to message
       logger(`Replying to message: ${args.message}`);
 
-      // Here you would integrate with the Telegram webhook to send the message
-      
       return new ExecutableGameFunctionResponse(
         ExecutableGameFunctionStatus.Done,
         `Replied with message: ${args.message}`
       );
-    } catch (e: unknown) {
-      const errorMessage = e instanceof Error ? e.message : 'Unknown error';
+    } catch (e) {
       return new ExecutableGameFunctionResponse(
         ExecutableGameFunctionStatus.Failed,
-        "Failed to reply to message: " + errorMessage
+        "Failed to reply to message"
       );
     }
   },
@@ -135,49 +142,49 @@ const closingFunction = new GameFunction({
     { name: "isForced", description: "Whether this is a forced close due to question limit or user requested", optional: true },
     { name: "isClosed", description: "Whether the conversation is already closed", optional: true }
   ] as const,
-  
+
   executable: async (args, logger) => {
     try {
       const { conversationData, isForced, isClosed } = args;
-      
+
       // If conversation is already closed, remind the user
       if (isClosed) {
-        const conversationObj = typeof conversationData === 'string' 
-          ? JSON.parse(conversationData) 
+        const conversationObj = typeof conversationData === 'string'
+          ? JSON.parse(conversationData)
           : conversationData || {};
-        
+
         const appId = conversationObj.appId || `VC-${Date.now().toString(36)}-CLOSED`;
         const reminder = `I'm sorry, but our evaluation session has already concluded. Your application ID is ${appId}. Thank you again for your time!`;
-        
+
         // Send the reminder via Telegram webhook
         logger(`Sending closure reminder: ${reminder}`);
-        
+
         return new ExecutableGameFunctionResponse(
           ExecutableGameFunctionStatus.Done,
           JSON.stringify({ message: reminder, closed: true })
         );
       }
-      
+
       // Generate a unique App ID
       const appId = `VC-${Date.now().toString(36)}-${Math.random().toString(36).substr(2, 5)}`.toUpperCase();
-      
+
       // Evaluate the startup based on the conversation data
       // This would be handled by the LLM's reasoning capabilities
-      
+
       // Calculate scores (0-100) based on collected data
       const executionScore = Math.floor(Math.random() * 31) + 70; // Placeholder for actual evaluation logic
       const marketScore = Math.floor(Math.random() * 31) + 70;
       const growthScore = Math.floor(Math.random() * 31) + 70;
       const returnPotentialScore = Math.floor(Math.random() * 31) + 70;
-      
+
       const overallScore = Math.floor((executionScore + marketScore + growthScore + returnPotentialScore) / 4);
-      
+
       // Create closing message with App ID and scores
       const closingMessage = `Thank you for sharing details about your startup! Based on our conversation, I've completed my evaluation.\n\nYour Application ID is: ${appId}\n\nYour venture received an overall rating of ${overallScore}/100, reflecting our assessment of your execution capability, market approach, growth potential, and investment return profile.\n\nThe Vibe Capital team will contact you if there's interest in further discussions. Best of luck with your venture!`;
-      
+
       // Send the closing message via Telegram webhook
       logger(`Sending closing message: ${closingMessage}`);
-      
+
       return new ExecutableGameFunctionResponse(
         ExecutableGameFunctionStatus.Done,
         JSON.stringify({
@@ -212,11 +219,11 @@ const processUserMessageFunction = new GameFunction({
     { name: "conversationState", description: "Current state of the conversation including question count, previous responses, etc." },
     { name: "isClosed", description: "Whether the conversation is already closed", optional: true }
   ] as const,
-  
+
   executable: async (args, logger) => {
     try {
       const { message, conversationState, isClosed } = args;
-      
+
       // If conversation is closed, use closing function to remind user
       if (isClosed) {
         return new ExecutableGameFunctionResponse(
@@ -224,13 +231,13 @@ const processUserMessageFunction = new GameFunction({
           JSON.stringify({ action: "remind_closed", conversationState })
         );
       }
-      
+
       // Check if this is a start command
       if (message && typeof message === 'string' && message.toLowerCase() === '/start') {
         return new ExecutableGameFunctionResponse(
           ExecutableGameFunctionStatus.Done,
-          JSON.stringify({ 
-            action: "start_conversation", 
+          JSON.stringify({
+            action: "start_conversation",
             questionType: "welcome",
             conversationState: {
               questionCount: 0,
@@ -239,34 +246,34 @@ const processUserMessageFunction = new GameFunction({
           })
         );
       }
-      
+
       // Store the user's response
       const stateObj = typeof conversationState === 'string'
         ? JSON.parse(conversationState)
         : conversationState || {};
-      
+
       const updatedState = {
         ...stateObj,
         responses: [...(stateObj.responses || []), message]
       };
-      
+
       // Determine if we've reached question limit
       const questionCount = updatedState.questionCount || 0;
       if (questionCount >= 15) {
         return new ExecutableGameFunctionResponse(
           ExecutableGameFunctionStatus.Done,
-          JSON.stringify({ 
-            action: "close_conversation", 
+          JSON.stringify({
+            action: "close_conversation",
             conversationState: updatedState,
-            isForced: true 
+            isForced: true
           })
         );
       }
-      
+
       // Determine next question type based on conversation history
       // This would rely on the LLM's understanding of the conversation flow
       let nextQuestionType;
-      
+
       if (updatedState.questionCount === 0) {
         // After welcome, ask about pitch
         nextQuestionType = "pitch";
@@ -279,11 +286,11 @@ const processUserMessageFunction = new GameFunction({
         const questionTypes = ["traction", "team", "technology", "revenue", "problem"];
         nextQuestionType = questionTypes[updatedState.questionCount % questionTypes.length];
       }
-      
+
       return new ExecutableGameFunctionResponse(
         ExecutableGameFunctionStatus.Done,
-        JSON.stringify({ 
-          action: "ask_question", 
+        JSON.stringify({
+          action: "ask_question",
           questionType: nextQuestionType,
           conversationState: updatedState
         })
