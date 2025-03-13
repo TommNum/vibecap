@@ -28,8 +28,8 @@ class TelegramPlugin {
             options.description ||
             "A worker that executes tasks within Telegram. It can send messages, send media, create poll, pin messages, and delete messages.";
 
-        this.telegramClient = new TelegramBot(options.credentials.botToken, { polling: false, webHook: true });
-        this.telegramClient.setWebHook(process.env.WEBHOOK_URL ?? '')
+        this.telegramClient = new TelegramBot(options.credentials.botToken, { polling: true });
+        // this.telegramClient.setWebHook(process.env.WEBHOOK_URL ?? '')
     }
 
     // Method to register a custom message handler
