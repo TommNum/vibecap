@@ -30,6 +30,9 @@ class TelegramPlugin {
 
         this.telegramClient = new TelegramBot(options.credentials.botToken, { polling: true });
         // this.telegramClient.setWebHook(process.env.WEBHOOK_URL ?? '')
+        this.telegramClient.on('polling_error', (error) => {
+            console.log(error);  // => 'EFATAL'
+        });
     }
 
     // Method to register a custom message handler
