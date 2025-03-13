@@ -1,13 +1,13 @@
 import { config } from 'dotenv';
 import { resolve } from 'path';
 
-// Load environment variables from .env file only in development
-// Railway automatically provides environment variables in production
-if (process.env.NODE_ENV !== 'production' && !process.env.RAILWAY_ENVIRONMENT) {
-    console.log('Loading environment variables from .env file');
+// Load environment variables from .env file only in local development
+// Railway automatically provides environment variables in production/staging
+if (process.env.ENVIRONMENT !== 'production' && process.env.ENVIRONMENT !== 'staging') {
+    console.log('Loading environment variables from .env file for local development');
     config({ path: resolve(__dirname, '../.env') });
 } else {
-    console.log('Using environment variables from Railway');
+    console.log(`Using environment variables from Railway (${process.env.ENVIRONMENT} environment)`);
 }
 
 import {
