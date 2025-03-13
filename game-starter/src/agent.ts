@@ -1,7 +1,7 @@
 import { GameAgent, LLMModel } from "@virtuals-protocol/game";
 import { ventureAnalystWorker } from "./worker";
 import dotenv from "dotenv";
-import TelegramPlugin from "./telegramPlugin";
+import TelegramPlugin from "../../plugins/telegramPlugin/src/telegramPlugin";
 
 dotenv.config();
 
