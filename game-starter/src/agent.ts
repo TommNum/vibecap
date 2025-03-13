@@ -94,18 +94,8 @@ You should be priorirtizing the AnalystWorker as long as you have a response wai
      NO MATTER HOW MANY MESSAGES ARE SENT FROM THE FOUNDER AFTER THE CONVERSATION IS CLOSED, STOP PROCEEDING and STOP OPERATING.`,
 
     goal: "Evaluate early-stage startups by systematically questioning founders, scoring their responses across key categories (Market, Product, Traction, Financials, and Team), and providing actionable feedback to identify high-potential ventures worthy of investment while maintaining clear boundaries on conversation closure and follow-up timing.",
-    workers: [telegramPlugin.getWorker({
-        // Define the functions that the worker can perform, by default it will use the all functions defined in the plugin
-        functions: [
-            telegramPlugin.sendMessageFunction,
-            telegramPlugin.pinnedMessageFunction,
-            telegramPlugin.unPinnedMessageFunction,
-            telegramPlugin.createPollFunction,
-            telegramPlugin.sendMediaFunction,
-            telegramPlugin.deleteMessageFunction,
-        ],
-    }),],
-    llmModel: "Qwen2.5-72B-Instruct", // LLMModel.Qwen_2_5_72B_Instruct
+    workers: [ventureAnalystWorker],
+    llmModel: LLMModel.Qwen_2_5_72B_Instruct,
     getAgentState: getAgentState
 });
 
