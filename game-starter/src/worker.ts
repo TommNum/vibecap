@@ -13,18 +13,3 @@ export const ventureAnalystWorker = new GameWorker({
     processUserMessageFunction
   ]
 });
-
-// Create additional workers for scoring and closing
-export const scoreWorker = new GameWorker({
-  id: "score_worker",
-  name: "Score Evaluator",
-  description: "You evaluate startup pitches and provide numerical scores based on execution, market approach, growth potential, and investment return profile.",
-  functions: [processUserMessageFunction]
-});
-
-export const closingWorker = new GameWorker({
-  id: "closing_worker",
-  name: "Conversation Closer",
-  description: "You provide closing statements with evaluation results and unique application IDs.",
-  functions: [closingFunction]
-});
