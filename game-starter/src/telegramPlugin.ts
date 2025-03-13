@@ -28,7 +28,8 @@ class TelegramPlugin {
             options.description ||
             "A worker that executes tasks within Telegram. It can send messages, send media, create poll, pin messages, and delete messages.";
 
-        this.telegramClient = new TelegramBot(options.credentials.botToken, { polling: true });
+        this.telegramClient = new TelegramBot(options.credentials.botToken, { polling: false, webHook: true });
+        this.telegramClient.setWebHook(process.env.WEBHOOK_URL ?? '')
     }
 
     // Method to register a custom message handler
@@ -186,7 +187,7 @@ class TelegramPlugin {
                     const options = args.options.split(",").map((option: string) => option.trim());
 
                     // Ensure options are in a correct format (an array of strings)
-                    if (!Array.isArray(options) ||options.length < 2) {
+                    if (!Array.isArray(options) || options.length < 2) {
                         logger(`Error: Options must be an array with at least two items.`);
                         return new ExecutableGameFunctionResponse(
                             ExecutableGameFunctionStatus.Failed,
