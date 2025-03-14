@@ -365,7 +365,7 @@ import {
         
         // Handle first-time welcome message if no history
         if (chatData.conversationHistory.filter(msg => msg.role === "assistant").length === 0) {
-          const welcomeMsg = "Hi! I am Wendy, your Associate at Vibe Capital. I'd like to learn about your startup to evaluate its potential. Could you start by telling me what your startup does in 1-2 sentences?";
+          const welcomeMsg = "Hi! I am Wendy, your AIssociate at Culture Capital. I'd like to learn about you're working on to evaluate its potential. Could you start by telling me the project name and what it does in 1-2 sentences?";
           
           chatData.conversationHistory.push({
             role: "assistant",
@@ -404,9 +404,21 @@ import {
             
           case "startup_name":
             // Store startup name
-            chatData.startupName = lastUserMessages[0].content;
-            responseMsg = "Great! Do you have any links to demos, websites, or prototypes? Please share them now, or type 'No links' if you don't have any.";
-            chatData.conversationStage = 'links';
+            const possibleName = extractStartupName(lastUserMessages[0].content);
+            responseMsg = `Just to confirm, your startup's name is "${possibleName}". Is that correct? (Yes/No)`;
+            chatData.conversationStage = 'confirm_name';
+            break;
+            
+          case "confirm_name":
+            // Handle user confirmation
+            if (message.toLowerCase() === "yes") {
+              chatData.startupName = possibleName;
+              responseMsg = "Great! Do you have any links to demos, websites, or prototypes? Please share them now, or type 'No links' if you don't have any.";
+              chatData.conversationStage = 'links';
+            } else {
+              responseMsg = "I'm sorry, I didn't catch that. Could you please repeat your response?";
+              chatData.conversationStage = 'confirm_name';
+            }
             break;
             
           case "links":
@@ -1004,4 +1016,24 @@ import {
       console.error("Error starting VibeCap:", error);
       throw error;
     }
+  }
+
+  function extractStartupName(message: string): string {
+    // Direct name mention patterns
+    const patterns = [
+      /my (?:company|startup|project|venture) (?:is|called) ([^\.,:;]+)/i,
+      /we are (?:building|creating|developing) ([^\.,:;]+)/i,
+      /I have built ([^\.,:;]+)/i,
+      /([A-Z][a-zA-Z0-9]*(?:\s[A-Z][a-zA-Z0-9]*)*) (?:is|solves|provides|offers)/
+    ];
+    
+    for (const pattern of patterns) {
+      const match = message.match(pattern);
+      if (match && match[1]) {
+        return match[1].trim();
+      }
+    }
+    
+    // If no patterns match, assume the entire message is the name
+    return message.trim();
   }
