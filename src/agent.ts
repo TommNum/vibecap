@@ -173,7 +173,7 @@ class GameAgent implements IGameAgent {
       }
 
       await new Promise((resolve) =>
-        setTimeout(resolve, heartbeatSeconds * 1000)
+        setTimeout(resolve, heartbeatSeconds * 30)
       );
     }
   }
