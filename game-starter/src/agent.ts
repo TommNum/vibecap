@@ -815,9 +815,9 @@ import {
       
       // Directly process the message with our function
       receiveMessageFunction.executable({
-        chatId: { value: chatId },
-        userId: { value: userId },
-        message: { value: messageText }
+        chatId: chatId,
+        userId: userId,
+        message: messageText
       }, (msg) => console.log(`[receive_message] ${msg}`));
     }
   };
@@ -890,9 +890,9 @@ import {
             
             // Process directly with our function
             await receiveMessageFunction.executable({
-              chatId: { value: chatId },
-              userId: { value: userId },
-              message: { value: messageText }
+              chatId: chatId,
+              userId: userId,
+              message: messageText
             }, (msg) => console.log(`[receive_message] ${msg}`));
           }
         }
