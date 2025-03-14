@@ -691,9 +691,9 @@ import {
           
           // Process the chat directly - no indirection to prevent race conditions
           if (action === "process_inactive_chat") {
-            return await processInactiveChatFunction.executable({ chatId: { value: chatId } }, logger);
+            return await processInactiveChatFunction.executable({ chatId: chatId }, logger);
           } else {
-            return await processConversationFunction.executable({ chatId: { value: chatId } }, logger);
+            return await processConversationFunction.executable({ chatId: chatId }, logger);
           }
         } finally {
           // Clear processing flag
