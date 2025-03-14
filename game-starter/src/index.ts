@@ -36,7 +36,7 @@ async function main() {
   try {
     // Initialize the agent with our shared environment getter
     console.log("Starting agent...");
-    const activity_agent = initializeAgent(getSharedEnvironment);
+    const activity_agent = initializeAgent();
     await activity_agent.init();
     console.log("Agent started successfully!");
 
