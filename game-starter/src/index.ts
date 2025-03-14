@@ -1,5 +1,5 @@
 import dotenv from "dotenv";
-import { activity_agent, handleRateLimitError, signalApiSuccess, telegramPlugin } from "./agent";
+import { handleRateLimitError, signalApiSuccess, telegramPlugin, initializeAgent } from "./agent";
 import { Message } from "node-telegram-bot-api";
 
 dotenv.config();
@@ -22,20 +22,24 @@ interface PollAnswer {
 // Global environment object to pass message context to the agent
 const messageContext: Record<string, any> = {};
 
+// Function to get a consistent environment for workers
+const getSharedEnvironment = async () => {
+  // Ensure chat_id is also available as many Telegram functions expect this format
+  return {
+    ...messageContext,
+    // Add chat_id in the format expected by telegram functions if chatId exists
+    ...(messageContext.chatId ? { chat_id: messageContext.chatId } : {})
+  };
+};
+
 /**
  * Main function to run the agent
  */
 async function main() {
   try {
-    // Set up environment getter for the Telegram worker
-    const telegramWorker = telegramPlugin.getWorker({
-      getEnvironment: async () => {
-        return messageContext;
-      },
-    });
-
-    // Start the agent
+    // Initialize the agent with our shared environment getter
     console.log("Starting agent...");
+    const activity_agent = initializeAgent(getSharedEnvironment);
     await activity_agent.init();
     console.log("Agent started successfully!");
 
