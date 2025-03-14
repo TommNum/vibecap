@@ -83,7 +83,8 @@ class TelegramPlugin {
                 this.createPollFunction,
                 this.pinnedMessageFunction,
                 this.unPinnedMessageFunction,
-                this.deleteMessageFunction
+                this.deleteMessageFunction,
+                this.sendChatActionFunction
             ],
             getEnvironment: data?.getEnvironment,
         });
@@ -381,6 +382,58 @@ class TelegramPlugin {
                     return new ExecutableGameFunctionResponse(
                         ExecutableGameFunctionStatus.Failed,
                         `Failed to delete message(s): ${e.message}`
+                    );
+                }
+            },
+        });
+    }
+
+    /**
+     * Function to send a chat action (typing, uploading photo, etc)
+     * Shows the user what the bot is currently doing
+     */
+    get sendChatActionFunction() {
+        return new GameFunction({
+            name: "send_chat_action",
+            description: "Send a chat action to show the user what the bot is currently doing (typing, uploading photo, etc).",
+            args: [
+                { name: "chat_id", description: "Unique identifier for the target chat", type: "string" },
+                { name: "action", description: "Type of action to send: 'typing', 'upload_photo', 'record_video', 'upload_video', 'record_audio', 'upload_audio', 'upload_document', 'find_location', 'record_video_note', 'upload_video_note'", type: "string" },
+            ] as const,
+            executable: async (args, logger) => {
+                try {
+                    if (!args.chat_id || !args.action) {
+                        return new ExecutableGameFunctionResponse(
+                            ExecutableGameFunctionStatus.Failed,
+                            "Both chat_id and action are required."
+                        );
+                    }
+
+                    logger(`Sending chat action to chat ${args.chat_id}: ${args.action}`);
+
+                    // Send the chat action using the Telegram client
+                    // Convert string to valid ChatAction type
+                    const validActions = ['typing', 'upload_photo', 'record_video', 'upload_video', 'record_audio', 
+                                        'upload_audio', 'upload_document', 'find_location', 'record_video_note', 'upload_video_note'];
+                    
+                    if (!validActions.includes(args.action)) {
+                        return new ExecutableGameFunctionResponse(
+                            ExecutableGameFunctionStatus.Failed,
+                            `Invalid action: ${args.action}. Must be one of: ${validActions.join(', ')}`
+                        );
+                    }
+                    
+                    await this.telegramClient.sendChatAction(args.chat_id, args.action as any);
+                    
+                    return new ExecutableGameFunctionResponse(
+                        ExecutableGameFunctionStatus.Done,
+                        "Chat action sent successfully."
+                    );
+                } catch (e: any) {
+                    logger(`Error: ${e.message}`);
+                    return new ExecutableGameFunctionResponse(
+                        ExecutableGameFunctionStatus.Failed,
+                        `Failed to send chat action: ${e.message}`
                     );
                 }
             },

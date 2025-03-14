@@ -9,6 +9,39 @@ import {
   import dotenv from "dotenv";
   import TelegramPlugin from "./telegramPlugin";
   
+  // Extend GameAgent with a call method
+  // This is necessary because the current GameAgent implementation doesn't include this method
+  declare module "@virtuals-protocol/game" {
+    interface GameAgent {
+      call(workerId: string, functionName: string, args: Record<string, any>): Promise<string | null>;
+    }
+  }
+  
+  // Implementation of the call method for GameAgent
+  GameAgent.prototype.call = async function(workerId: string, functionName: string, args: Record<string, any>): Promise<string | null> {
+    try {
+      const worker = this.getWorkerById(workerId);
+      const fn = worker.functions.find(fn => fn.name === functionName);
+      
+      if (!fn) {
+        console.error(`Function ${functionName} not found in worker ${workerId}`);
+        return null;
+      }
+      
+      // Convert args to the format expected by the function
+      const formattedArgs = Object.entries(args).reduce((acc, [key, value]) => {
+        acc[key] = { value: String(value) };
+        return acc;
+      }, {} as Record<string, { value: string }>);
+      
+      const result = await fn.execute(formattedArgs, (msg: string) => console.log(`[${this.name}] ${msg}`));
+      return result.feedback;
+    } catch (error) {
+      console.error(`Error executing ${workerId}.${functionName}:`, error);
+      return null;
+    }
+  };
+  
   dotenv.config();
   
   if (!process.env.API_KEY || !process.env.TELEGRAM_BOT_TOKEN) {
@@ -682,7 +715,7 @@ import {
         
         // Get queue processing instructions
         agent.call('venture_analyst', 'process_queue', {})
-          .then((result) => {
+          .then((result: string | null) => {
             if (result && typeof result === 'string') {
               try {
                 const data = JSON.parse(result);
@@ -695,7 +728,7 @@ import {
                     // Process according to action type
                     agent.call('venture_analyst', data.action, {
                       chatId: data.chatId
-                    }).then((actionResult) => {
+                    }).then((actionResult: string | null) => {
                       if (actionResult && typeof actionResult === 'string') {
                         try {
                           const resultData = JSON.parse(actionResult);
@@ -718,7 +751,7 @@ import {
               }
             }
           })
-          .catch((error) => {
+          .catch((error: Error) => {
             console.error('Error in queue processing:', error);
           });
       }
