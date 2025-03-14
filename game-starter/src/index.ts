@@ -1,6 +1,7 @@
 import dotenv from "dotenv";
 import { handleRateLimitError, signalApiSuccess, telegramPlugin, initializeAgent } from "./agent";
 import { Message } from "node-telegram-bot-api";
+import { initializeTelegramPolling } from './poller';
 
 dotenv.config();
 
@@ -39,8 +40,12 @@ async function main() {
     const activity_agent = initializeAgent();
     await activity_agent.init();
     console.log("Agent started successfully!");
+    
+    // Start polling for Telegram updates
+    const poller = initializeTelegramPolling();
+    console.log("Telegram polling started");
 
-    // Register a single message handler for the telegramPlugin
+    // We still keep the message handler for manual message handling if needed
     telegramPlugin.onMessage(async (message: Message) => {
       try {
         // Skip messages without text

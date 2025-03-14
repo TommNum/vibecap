@@ -28,7 +28,8 @@ class TelegramPlugin {
             options.description ||
             "A worker that executes tasks within Telegram. It can send messages, send media, create poll, pin messages, and delete messages.";
 
-        this.telegramClient = new TelegramBot(options.credentials.botToken, { polling: true });
+        // Initialize without polling - we'll use our custom polling implementation
+        this.telegramClient = new TelegramBot(options.credentials.botToken, { polling: false });
 
         // if (!process.env.WEBHOOK_URL) {
         //     throw new Error('Missing webhookurl')
