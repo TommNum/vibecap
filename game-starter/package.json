@@ -21,9 +21,11 @@
   "dependencies": {
     "@types/dotenv": "^6.1.1",
     "@types/node-telegram-bot-api": "^0.64.7",
+    "@types/pg": "^8.11.11",
     "@virtuals-protocol/game": "^0.1.9",
     "dotenv": "^16.4.7",
     "node-telegram-bot-api": "^0.66.0",
-    "openai": "^4.81.0"
+    "openai": "^4.81.0",
+    "pg": "^8.14.0"
   }
 }
