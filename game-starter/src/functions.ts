@@ -210,42 +210,18 @@ const closingFunction = new GameFunction({
   },
 });
 
-// Function to process incoming user messages
+// Function to process user messages
 const processUserMessageFunction = new GameFunction({
   name: "process_user_message",
-  description: "Process incoming user messages and determine next action",
+  description: "Process a user message and determine the next action",
   args: [
-    { name: "message", description: "The message received from the user" },
-    { name: "conversationState", description: "Current state of the conversation including question count, previous responses, etc." },
-    { name: "isClosed", description: "Whether the conversation is already closed", optional: true }
+    { name: "conversationState", description: "Current state of the conversation" },
+    { name: "message", description: "The user's message" },
   ] as const,
 
   executable: async (args, logger) => {
     try {
-      const { message, conversationState, isClosed } = args;
-
-      // If conversation is closed, use closing function to remind user
-      if (isClosed) {
-        return new ExecutableGameFunctionResponse(
-          ExecutableGameFunctionStatus.Done,
-          JSON.stringify({ action: "remind_closed", conversationState })
-        );
-      }
-
-      // Check if this is a start command
-      if (message && typeof message === 'string' && message.toLowerCase() === '/start') {
-        return new ExecutableGameFunctionResponse(
-          ExecutableGameFunctionStatus.Done,
-          JSON.stringify({
-            action: "start_conversation",
-            questionType: "welcome",
-            conversationState: {
-              questionCount: 0,
-              responses: []
-            }
-          })
-        );
-      }
+      const { conversationState, message } = args;
 
       // Store the user's response
       const stateObj = typeof conversationState === 'string'
