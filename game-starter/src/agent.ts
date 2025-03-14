@@ -435,7 +435,7 @@ const processConversationFunction = new GameFunction({
                     // Score response for appropriate category
                     const questionIndex = chatData.questionCount - 1;
                     const categories = ["market", "product", "traction", "financials", "team"];
-                    const category = categories[questionIndex % 5];
+                    const category = categories[questionIndex % 5] as keyof typeof chatData.scores;
 
                     // Basic scoring logic (simplified)
                     const responseLength = lastUserMessages[0].content.length;
