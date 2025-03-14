@@ -1,0 +1,11 @@
+[phases.setup]
+cmds = ["cd game-starter"]
+
+[phases.install]
+cmds = ["cd game-starter && npm ci"]
+
+[phases.build]
+cmds = ["cd game-starter && npm run build"]
+
+[start]
+cmd = "cd game-starter && npm start" 
