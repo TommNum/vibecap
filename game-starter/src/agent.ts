@@ -1,5 +1,5 @@
 import { GameAgent, LLMModel } from "@virtuals-protocol/game";
-import { ventureAnalystWorker } from "./worker";
+import { ventureAnalystWorker, closingWorker } from "./worker";
 import dotenv from "dotenv";
 import TelegramPlugin from "./telegramPlugin";
 
@@ -68,7 +68,7 @@ export const activity_agent = new GameAgent(process.env.API_KEY, {
        - Evaluate the weaknesses of the business model and the ability to shore up the weaknesses, provide a score to attribute to the execution category
        - Provide a 0 score for categories where the founders have not provided an answer 
 
-    3. Working with ventureAnalystWorker to close the conversation with the founders:
+    3. Working with closingWorker to close the conversation with the founders:
        - Initiate a conversation with the founders to close the conversation and provide a app id to the founders 
        - provide a messagee to the founders that lets them they have wrapped up the pitch
        - thank them for their time and provide them with the scorecard 
@@ -86,17 +86,21 @@ You should be priorirtizing the AnalystWorker as long as you have a response wai
     Important: Never continue operations in the first 24 hours of the chat being closed. immediately stop and close the status of the chat to our internal system. 
     NO MATTER WHAT, you must make sure that you STOP OPERATING when the conversation is closed. NO MESSSAGES ALLOWED AFTER THE CONVERSATION IS CLOSED.
      NO MATTER HOW MANY MESSAGES ARE SENT FROM THE FOUNDER AFTER THE CONVERSATION IS CLOSED, STOP PROCEEDING and STOP OPERATING.`,
-    workers: [telegramPlugin.getWorker({
-        // Define the functions that the worker can perform, by default it will use the all functions defined in the plugin
-        functions: [
-            telegramPlugin.sendMessageFunction,
-            telegramPlugin.pinnedMessageFunction,
-            telegramPlugin.unPinnedMessageFunction,
-            telegramPlugin.createPollFunction,
-            telegramPlugin.sendMediaFunction,
-            telegramPlugin.deleteMessageFunction,
-        ],
-    }),],
+    workers: [
+        telegramPlugin.getWorker({
+            // Define the functions that the worker can perform, by default it will use the all functions defined in the plugin
+            functions: [
+                telegramPlugin.sendMessageFunction,
+                telegramPlugin.pinnedMessageFunction,
+                telegramPlugin.unPinnedMessageFunction,
+                telegramPlugin.createPollFunction,
+                telegramPlugin.sendMediaFunction,
+                telegramPlugin.deleteMessageFunction,
+            ],
+        }),
+        ventureAnalystWorker,
+        closingWorker
+    ],
     llmModel: "Qwen2.5-72B-Instruct", // LLMModel.Qwen_2_5_72B_Instruct
     getAgentState
 });
