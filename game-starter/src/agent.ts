@@ -93,6 +93,8 @@ export const initializeAgent = (getSharedEnvironment: () => Promise<Record<strin
         throw new Error('API_KEY is required in environment variables');
     }
     
+    console.log("Initializing agent with shared environment getter");
+    
     const agent = new GameAgent(process.env.API_KEY, {
         name: "vibecap_associate",
         goal: "Evaluate startups by asking questions, scoring responses, and providing feedback with strict rate limiting to prevent duplicate messages and API errors.",
@@ -140,11 +142,11 @@ export const initializeAgent = (getSharedEnvironment: () => Promise<Record<strin
         - To communicate with users YOU MUST USE the "send_message" function from the "telegram_connector" worker
         - The telegram_connector worker has ID "telegram_connector" - you MUST use this exact ID
         - When calling send_message, include BOTH of these parameters:
-           1. chat_id: The chat ID is available in your environment as "chatId" or "chat_id" (this is REQUIRED)
+           1. chat_id: The chat ID is available in your environment as "chat_id" (this is REQUIRED)
            2. text: The message text you want to send to the user
         - Example function call:
            call telegram_connector.send_message({
-             chat_id: "123456789",  // Get this from your environment
+             chat_id: "123456789",  // Get this from your environment as chat_id
              text: "Your message here"
            })
         - If you do not follow these instructions EXACTLY, your messages will not be delivered to users

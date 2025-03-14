@@ -24,12 +24,9 @@ const messageContext: Record<string, any> = {};
 
 // Function to get a consistent environment for workers
 const getSharedEnvironment = async () => {
-  // Ensure chat_id is also available as many Telegram functions expect this format
-  return {
-    ...messageContext,
-    // Add chat_id in the format expected by telegram functions if chatId exists
-    ...(messageContext.chatId ? { chat_id: messageContext.chatId } : {})
-  };
+  // Instead of creating a new object, return a direct reference to the messageContext
+  // This ensures any updates to messageContext are immediately available to workers
+  return messageContext;
 };
 
 /**
@@ -84,12 +81,19 @@ async function main() {
         try {
           console.log(`Processing message #${chatData.count} for chat ${chatId}`);
           
-          // Update the message context for the agent
+          // IMPORTANT: Clear previous context data to avoid stale information
+          Object.keys(messageContext).forEach(key => delete messageContext[key]);
+          
+          // Update the message context for the agent - always set both chatId and chat_id formats
           messageContext.currentMessage = message;
           messageContext.chatId = chatId.toString();
+          messageContext.chat_id = chatId.toString(); // Set chat_id directly
           messageContext.username = message.from?.username || 'unknown';
           messageContext.messageText = message.text;
           messageContext.messageType = 'text';
+          
+          // Debug log to confirm environment context  
+          console.log(`Updated message context with chat_id: ${messageContext.chat_id}`);
           
           // Run the agent step to process this message
           await activity_agent.step({ verbose: true });
@@ -134,11 +138,16 @@ async function main() {
         console.log(`Received poll answer from user ${pollAnswer.user.id}`);
         const optionIds = pollAnswer.option_ids.map(String);
         
+        // Clear previous context data
+        Object.keys(messageContext).forEach(key => delete messageContext[key]);
+        
         // Update the message context for the agent
         messageContext.pollAnswer = pollAnswer;
         messageContext.userId = pollAnswer.user.id.toString();
         messageContext.selectedOptions = optionIds.join(", ");
         messageContext.messageType = 'poll_answer';
+        // Set chat_id based on the user ID for poll answers
+        messageContext.chat_id = pollAnswer.user.id.toString(); 
         
         // Run the agent step to process this poll answer
         await activity_agent.step({ verbose: true });
