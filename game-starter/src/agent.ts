@@ -395,6 +395,9 @@ import {
           );
         }
         
+        // Move this outside the switch statement
+        let possibleName = "";
+        
         // Process based on conversation stage
         let responseMsg = "";
         
@@ -408,14 +411,14 @@ import {
             
           case "startup_name":
             // Store startup name
-            const possibleName = extractStartupName(lastUserMessages[0].content);
+            possibleName = extractStartupName(lastUserMessages[0].content);
             responseMsg = `Just to confirm, your startup's name is "${possibleName}". Is that correct? (Yes/No)`;
             chatData.conversationStage = 'confirm_name';
             break;
             
           case "confirm_name":
             // Handle user confirmation
-            if (message.toLowerCase() === "yes") {
+            if (lastUserMessages[0].content.toLowerCase() === "yes") {
               chatData.startupName = possibleName;
               responseMsg = "Great! Do you have any links to demos, websites, or prototypes? Please share them now, or type 'No links' if you don't have any.";
               chatData.conversationStage = 'links';
@@ -1128,3 +1131,183 @@ Your job is specifically to evaluate startups, not engage in casual conversation
     
     return firstPhrase.trim();
   };
+
+  // =========================================================================
+  // APPLICATION STARTUP
+  // =========================================================================
+
+  export function startVibeCap() {
+    try {
+      console.log("Starting VibeCap Venture Analyst...");
+      
+      // Initialize the agent
+      initializeAgent();
+      
+      // Start the queue processor
+      const queueProcessor = startQueueProcessor();
+      
+      // Start polling for Telegram updates - only use ONE method (polling OR webhook)
+      const telegramPoller = initializeTelegramPolling();
+      
+      console.log("VibeCap Venture Analyst started successfully!");
+      
+      // Return stop function
+      return {
+        stop: () => {
+          queueProcessor.stop();
+          telegramPoller.stop();
+        }
+      };
+    } catch (error) {
+      console.error("Error starting VibeCap:", error);
+      throw error;
+    }
+  }
+
+  // =========================================================================
+  // TELEGRAM POLLING
+  // =========================================================================
+
+  // Function to start polling Telegram for updates
+  export function startTelegramPolling(botToken: string, interval = 3000) {
+    console.log("Starting Telegram polling...");
+    
+    // First, delete any existing webhook to avoid conflicts
+    fetch(`https://api.telegram.org/bot${botToken}/deleteWebhook`)
+      .then(response => response.json())
+      .then(data => {
+        if (data.ok) {
+          console.log("Successfully removed webhook configuration");
+        } else {
+          console.error("Failed to remove webhook:", data);
+        }
+      })
+      .catch(error => {
+        console.error("Error removing webhook:", error);
+      });
+    
+    let lastUpdateId = 0;
+    
+    // Set up interval to poll regularly
+    const pollingInterval = setInterval(async () => {
+      try {
+        // Ensure we're not already processing something else
+        if (RATE_LIMIT.inProgress) {
+          return; // Skip this polling cycle
+        }
+        
+        // Get updates from Telegram with a timeout
+        const response = await fetch(
+          `https://api.telegram.org/bot${botToken}/getUpdates?offset=${lastUpdateId + 1}&timeout=30`,
+          { method: "GET" }
+        );
+        
+        if (!response.ok) {
+          console.error(`Telegram API error: ${response.status} ${response.statusText}`);
+          return;
+        }
+        
+        const data = await response.json();
+        
+        if (!data.ok) {
+          console.error(`Telegram API returned error: ${data.description}`);
+          return;
+        }
+        
+        // Process each update
+        for (const update of data.result) {
+          // Update the lastUpdateId to acknowledge this update
+          if (update.update_id >= lastUpdateId) {
+            lastUpdateId = update.update_id;
+          }
+          
+          // Process message if present
+          if (update.message && update.message.text) {
+            console.log(`Received message: ${update.message.text.substring(0, 50)}...`);
+            
+            // Process the message with our function (no need to create new agent instance)
+            const chatId = update.message.chat.id.toString();
+            const userId = update.message.from.id.toString();
+            const messageText = update.message.text;
+            
+            // Process directly with our function
+            await receiveMessageFunction.executable({
+              chatId: chatId,
+              userId: userId,
+              message: messageText
+            }, (msg) => console.log(`[receive_message] ${msg}`));
+          }
+        }
+      } catch (error) {
+        console.error("Error in Telegram polling:", error);
+        
+        // Check for rate limiting error
+        if (error instanceof Error && 
+            (error.message.includes("429") || 
+             error.message.includes("rate limit") || 
+             error.message.includes("too many requests"))) {
+          handleRateLimitError();
+        }
+      }
+    }, interval);
+    
+    return {
+      stop: () => clearInterval(pollingInterval)
+    };
+  }
+
+  // Initialize Telegram polling
+  export function initializeTelegramPolling() {
+    if (!process.env.TELEGRAM_BOT_TOKEN) {
+      throw new Error('TELEGRAM_BOT_TOKEN is required');
+    }
+    
+    return startTelegramPolling(process.env.TELEGRAM_BOT_TOKEN);
+  }
+
+  // Start queue processor
+  export function startQueueProcessor() {
+    // Initialize the agent
+    const agent = initializeAgent();
+    
+    // Set up queue processing at reasonable intervals
+    const interval = setInterval(async () => {
+      // Skip if we're already processing
+      if (RATE_LIMIT.inProgress) return;
+      
+      // Process the queue if there are items
+      if (agentState.processingQueue.length > 0) {
+        try {
+          await processQueueFunction.executable({}, 
+            (msg) => console.log(`[queue_processor] ${msg}`));
+        } catch (error) {
+          console.error("Error processing queue:", error);
+        }
+      }
+      
+      // Also check for inactive chats
+      try {
+        // Check for inactive chats that need nudging
+        const currentTime = Date.now();
+        Object.entries(agentState.activeChats).forEach(([chatId, chatData]) => {
+          if (chatData.isClosed) return;
+          
+          const inactiveTime = currentTime - chatData.lastActivity;
+          if (inactiveTime > 2 * 60 * 60 * 1000) { // 2 hours
+            // Only add to queue if we've been waiting for a response
+            if (chatData.pendingResponse && chatData.nudgeCount < 4) {
+              if (!agentState.processingQueue.includes(chatId)) {
+                agentState.processingQueue.push(chatId);
+              }
+            }
+          }
+        });
+      } catch (error) {
+        console.error("Error checking inactive chats:", error);
+      }
+    }, 15000); // Check every 15 seconds
+    
+    return {
+      stop: () => clearInterval(interval)
+    };
+  }
