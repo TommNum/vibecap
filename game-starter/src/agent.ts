@@ -1099,4 +1099,32 @@ Your job is specifically to evaluate startups, not engage in casual conversation
         chatId: chatId,
         userId: userId,
         message: messageText
-      }, (msg) => console.log(`[receive_message] ${msg}`
+      }, (msg) => console.log(`[receive_message] ${msg}`));
+    }
+  };
+  
+  // Helper function to extract startup name from user message
+  const extractStartupName = (message: string): string => {
+    // Remove common prefixes that aren't part of the name
+    const cleanedMessage = message.replace(/^(our|my|the) (startup|company|project|venture|app|business)( is| name is| called)? /i, '');
+    
+    // If the message is very short, it's likely just the name itself
+    if (cleanedMessage.length < 30) {
+      return cleanedMessage.trim();
+    }
+    
+    // For longer messages, extract the first sentence or phrase that might be the name
+    const firstSentence = cleanedMessage.split(/[.!?]/)[0];
+    const firstPhrase = firstSentence.split(',')[0];
+    
+    // If the first phrase is still long, take just the first few words
+    if (firstPhrase.length > 30) {
+      const words = firstPhrase.split(' ');
+      if (words.length > 3) {
+        return words.slice(0, 3).join(' ');
+      }
+      return firstPhrase;
+    }
+    
+    return firstPhrase.trim();
+  };
