@@ -238,6 +238,55 @@ const sendTelegramMessage = async (chatId: string, text: string): Promise<boolea
     }
 };
 
+// Helper function to detect bad behavior in user messages
+const detectBadBehavior = (message: string): { isBad: boolean; isRude: boolean; reason: string } => {
+    if (!message) return { isBad: true, isRude: false, reason: "Empty message" };
+    
+    // Convert to lowercase for easier matching
+    const lowerMsg = message.toLowerCase().trim();
+    
+    // Check for very short messages (except those that might be startup names)
+    if (lowerMsg.split(/\s+/).length < 3 && lowerMsg.length < 15) {
+        // Check if this might be a valid startup name or "no links"
+        if (lowerMsg === "no links") return { isBad: false, isRude: false, reason: "" };
+        return { isBad: true, isRude: false, reason: "Message too short to be meaningful" };
+    }
+    
+    // Check for rude content
+    const rudePatterns = [
+        /\b(stupid|dumb|idiot|suck|bad|useless|fool)\b/i,
+        /\b(fuck|shit|crap|ass|bitch)\b/i,
+        /\?{3,}/,  // Multiple question marks often indicate frustration
+        /\byou are\s+([^.]{1,20})\b/i, // "you are X" where X is short (likely an insult)
+    ];
+    
+    for (const pattern of rudePatterns) {
+        if (pattern.test(lowerMsg)) {
+            return { isBad: true, isRude: true, reason: "Contains rude or inappropriate language" };
+        }
+    }
+    
+    // Check for meaningless or testing messages
+    const testPatterns = [
+        /\b(test|testing|hello|hi|hey)\b/i,
+        /\bwhy\s+(would|should|do|can)\s+i\b/i, // Questioning patterns like "why would I"
+    ];
+    
+    for (const pattern of testPatterns) {
+        if (pattern.test(lowerMsg) && lowerMsg.length < 30) {
+            return { isBad: true, isRude: false, reason: "Appears to be a test message or greeting without startup information" };
+        }
+    }
+    
+    // Check if message discusses the bot itself rather than a startup
+    if (lowerMsg.includes("you") && lowerMsg.length < 50 && !lowerMsg.includes("startup") && !lowerMsg.includes("company") && !lowerMsg.includes("product")) {
+        return { isBad: true, isRude: false, reason: "Message is about the bot rather than a startup" };
+    }
+    
+    // Message passes all checks
+    return { isBad: false, isRude: false, reason: "" };
+};
+
 // =========================================================================
 // WORKER FUNCTIONS
 // =========================================================================
@@ -278,6 +327,39 @@ const receiveMessageFunction = new GameFunction({
                 content: message || '',
                 timestamp: Date.now()
             });
+
+            // Check for bad behavior
+            if (message) {
+                const behaviorCheck = detectBadBehavior(message);
+                if (behaviorCheck.isBad) {
+                    logger(`Detected bad behavior in chat ${chatId}: ${behaviorCheck.reason}`);
+                    
+                    // Count how many assistant messages we have sent (for warning tracking)
+                    const assistantMessages = chatData.conversationHistory.filter(m => m.role === "assistant").length;
+                    
+                    // First warning or firm disqualification based on history
+                    let responseMsg = "";
+                    if (assistantMessages <= 3 || !chatData.conversationHistory.some(m => 
+                        m.role === "assistant" && m.content.includes("I'm here to evaluate startups professionally"))) {
+                        // First warning
+                        responseMsg = "I'm here to evaluate startups professionally. If you're interested in pitching your business concept, please share details about your startup. Otherwise, this conversation will be closed.";
+                    } else {
+                        // Repeated offenses or particularly rude message
+                        responseMsg = "As this conversation isn't focused on evaluating a startup, I'll need to end our assessment. Your application is disqualified with a score of 0/500. Please start a new conversation when you're ready to discuss a legitimate venture.";
+                        chatData.isClosed = true;
+                    }
+                    
+                    // Add response to conversation history
+                    chatData.conversationHistory.push({
+                        role: "assistant",
+                        content: responseMsg,
+                        timestamp: Date.now()
+                    });
+                    
+                    // Send message directly
+                    await sendTelegramMessage(chatId as string, responseMsg);
+                }
+            }
 
             // Add to processing queue if not already there
             if (!agentState.processingQueue.includes(chatId as string)) {
@@ -369,6 +451,50 @@ const processConversationFunction = new GameFunction({
             const lastUserMessages = chatData.conversationHistory
                 .filter(msg => msg.role === "user")
                 .sort((a, b) => b.timestamp - a.timestamp);
+                
+            // Check for bad behavior in the latest message
+            if (lastUserMessages.length > 0) {
+                const behaviorCheck = detectBadBehavior(lastUserMessages[0].content);
+                if (behaviorCheck.isBad) {
+                    logger(`Detected bad behavior in chat ${chatId}: ${behaviorCheck.reason}`);
+                    
+                    // Check if we've already warned them
+                    const alreadyWarned = chatData.conversationHistory.some(m => 
+                        m.role === "assistant" && m.content.includes("I'm here to evaluate startups professionally"));
+                    
+                    let responseMsg = "";
+                    if (!alreadyWarned) {
+                        // First warning
+                        responseMsg = "I'm here to evaluate startups professionally. If you're interested in pitching your business concept, please share details about your startup. Otherwise, this conversation will be closed.";
+                    } else {
+                        // Repeated offenses
+                        responseMsg = "As this conversation isn't focused on evaluating a startup, I'll need to end our assessment. Your application is disqualified with a score of 0/500. Please start a new conversation when you're ready to discuss a legitimate venture.";
+                        chatData.isClosed = true;
+                    }
+                    
+                    // Add response to conversation history
+                    chatData.conversationHistory.push({
+                        role: "assistant",
+                        content: responseMsg,
+                        timestamp: Date.now()
+                    });
+                    
+                    // Send directly
+                    await sendTelegramMessage(chatId as string, responseMsg);
+                    
+                    // Remove from processing queue
+                    agentState.processingQueue = agentState.processingQueue.filter(id => id !== chatId);
+                    
+                    return new ExecutableGameFunctionResponse(
+                        ExecutableGameFunctionStatus.Done,
+                        JSON.stringify({
+                            chatId,
+                            message: responseMsg,
+                            isClosed: chatData.isClosed
+                        })
+                    );
+                }
+            }
 
             // Handle first-time welcome message if no history
             if (chatData.conversationHistory.filter(msg => msg.role === "assistant").length === 0) {
@@ -737,7 +863,7 @@ const processQueueFunction = new GameFunction({
 export const ventureAnalystWorker = new GameWorker({
     id: "venture_analyst",
     name: "Venture Analyst",
-    description: "Worker responsible for processing startup evaluations through structured conversation",
+    description: "Worker responsible for processing startup evaluations through structured conversation. CRITICAL RULE: Must detect and respond to rude, dismissive, or off-topic behavior. If user is rude, insulting, sends very short/evasive answers, or avoids startup questions: (1) First offense: send a warning to stay professional and on-topic, (2) Repeated offenses: disqualify with 0/500 score and close conversation. Do not continue standard conversation flow with users exhibiting bad behavior. Normal evaluation should assess market, product, traction, financials, and team.",
     functions: [
         receiveMessageFunction,
         processConversationFunction,
