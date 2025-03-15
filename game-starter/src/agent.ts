@@ -68,6 +68,8 @@ import {
       isClosed: boolean;
       scores: Record<string, number>;
       lastMessage: string;  // Store the last message sent to prevent duplicates
+      offTopicCount: number;
+      lastMessageWasOffTopic: boolean;
     }>,
     processingQueue: [] as string[], // Queue for chat IDs that need processing
     
@@ -103,7 +105,9 @@ import {
           traction: 0,
           financials: 0,
           team: 0
-        }
+        },
+        offTopicCount: 0,
+        lastMessageWasOffTopic: false
       };
     }
     return agentState.activeChats[chatId];
@@ -724,6 +728,260 @@ import {
     }
   });
   
+  // Function to detect off-topic or inappropriate content
+  const detectOffTopicContent = new GameFunction({
+    name: "detect_off_topic_content",
+    description: "Analyze a message to determine if it's off-topic, inappropriate, or unrelated to startup discussions",
+    args: [
+      { name: "message", description: "The message content to analyze" }
+    ] as const,
+    
+    executable: async (args, logger) => {
+      try {
+        const { message } = args;
+        
+        if (!message) {
+          return new ExecutableGameFunctionResponse(
+            ExecutableGameFunctionStatus.Failed,
+            "Message content is required"
+          );
+        }
+        
+        // Define patterns that might indicate off-topic or inappropriate content
+        const offTopicPatterns = [
+          // Offensive language patterns
+          /\b(fuck|shit|ass|bitch|cunt|dick|pussy|asshole|bastard)\b/i,
+          
+          // Non-startup related commands or questions
+          /\b(tell me a joke|what is your name|who made you|how do you work|are you ai)\b/i,
+          
+          // Testing or probing patterns
+          /\b(test|testing|just checking|what can you do)\b/i,
+          
+          // Random unrelated topics
+          /\b(weather|sports|news|politics|movie|game|play|song|music)\b/i
+        ];
+        
+        // Look for matches with off-topic patterns
+        const isOffTopic = offTopicPatterns.some(pattern => pattern.test(message as string));
+        
+        // Exclude legitimate greetings from being flagged
+        const greetingPatterns = /\b(hello|hi|hey|greetings|good morning|good afternoon|good evening)\b/i;
+        const isJustGreeting = greetingPatterns.test(message as string) && (message as string).length < 20;
+        
+        return new ExecutableGameFunctionResponse(
+          ExecutableGameFunctionStatus.Done,
+          JSON.stringify({
+            isOffTopic: isOffTopic && !isJustGreeting,
+            reason: isOffTopic ? "Message contains potential off-topic or inappropriate content" : "Message appears relevant"
+          })
+        );
+      } catch (e) {
+        const errorMessage = e instanceof Error ? e.message : 'Unknown error';
+        return new ExecutableGameFunctionResponse(
+          ExecutableGameFunctionStatus.Failed,
+          "Failed to analyze message content: " + errorMessage
+        );
+      }
+    }
+  });
+  
+  // Function to handle off-topic messages with appropriate responses
+  const handleOffTopicMessageFunction = new GameFunction({
+    name: "handle_off_topic_message",
+    description: "Generate appropriate responses to off-topic or inappropriate messages",
+    args: [
+      { name: "chatId", description: "The chat ID where the off-topic message was received" },
+      { name: "message", description: "The off-topic message content" }
+    ] as const,
+    
+    executable: async (args, logger) => {
+      try {
+        const { chatId, message } = args;
+        
+        if (!chatId) {
+          return new ExecutableGameFunctionResponse(
+            ExecutableGameFunctionStatus.Failed,
+            "Chat ID is required"
+          );
+        }
+        
+        // Get chat data
+        const chatData = agentState.activeChats[chatId as string];
+        if (!chatData) {
+          return new ExecutableGameFunctionResponse(
+            ExecutableGameFunctionStatus.Failed,
+            "Chat not found"
+          );
+        }
+        
+        // Increment off-topic count
+        chatData.offTopicCount = (chatData.offTopicCount || 0) + 1;
+        chatData.lastMessageWasOffTopic = true;
+        
+        // Check if we've reached the limit
+        if (chatData.offTopicCount >= 7) {
+          // Close the conversation
+          return await closeOffTopicConversationFunction.executable({ chatId }, logger);
+        }
+        
+        // Generate a redirect response based on current situation
+        let responseMsg = "";
+        const remainingWarnings = 7 - chatData.offTopicCount;
+        
+        // Different responses based on how many warnings they've had
+        if (chatData.offTopicCount === 1) {
+          responseMsg = `I appreciate your message, but I'm specifically here to evaluate startup pitches. Could we please stay focused on your business concept? `;
+        } else if (chatData.offTopicCount < 4) {
+          responseMsg = `I notice we're getting off-topic. As a venture capital associate, my role is to analyze startups. You have ${remainingWarnings} warnings before this evaluation will be closed. `;
+        } else {
+          responseMsg = `This is a reminder that I'm here solely to evaluate startup pitches. This is warning #${chatData.offTopicCount} of 7 before your evaluation is closed with a failing score. `;
+        }
+        
+        // Add stage-specific prompt to get back on track
+        switch (chatData.conversationStage) {
+          case "welcome":
+            responseMsg += "Could you please tell me about your startup and what it does?";
+            break;
+          case "startup_name":
+            responseMsg += "I still need to know the name of your startup. What is it called?";
+            break;
+          case "confirm_name":
+            responseMsg += `Is "${chatData.startupName}" the correct name of your startup? Please answer Yes or No.`;
+            break;
+          case "links":
+            responseMsg += "Do you have any links to demos, websites, or prototypes to share? If not, just say 'No links'.";
+            break;
+          case "evaluation":
+            // Find the last asked question and repeat it
+            const lastQuestion = chatData.conversationHistory
+              .filter(msg => msg.role === "assistant" && !msg.content.includes("off-topic"))
+              .pop();
+            
+            if (lastQuestion) {
+              responseMsg += "Let's get back to our evaluation. " + lastQuestion.content;
+            } else {
+              responseMsg += "Let's continue evaluating your startup. What problem is your startup solving?";
+            }
+            break;
+          default:
+            responseMsg += "Could you tell me about your startup?";
+        }
+        
+        // Add to conversation history
+        chatData.conversationHistory.push({
+          role: "assistant",
+          content: responseMsg,
+          timestamp: Date.now()
+        });
+        
+        // Send the message
+        await sendTelegramMessage(chatId as string, responseMsg);
+        
+        // Remove from processing queue
+        agentState.processingQueue = agentState.processingQueue.filter(id => id !== chatId);
+        
+        logger(`Handled off-topic message in chat ${chatId} (warning #${chatData.offTopicCount})`);
+        
+        return new ExecutableGameFunctionResponse(
+          ExecutableGameFunctionStatus.Done,
+          JSON.stringify({
+            chatId,
+            message: responseMsg,
+            offTopicCount: chatData.offTopicCount,
+            remainingWarnings
+          })
+        );
+      } catch (e) {
+        const errorMessage = e instanceof Error ? e.message : 'Unknown error';
+        return new ExecutableGameFunctionResponse(
+          ExecutableGameFunctionStatus.Failed,
+          "Failed to handle off-topic message: " + errorMessage
+        );
+      }
+    }
+  });
+  
+  // Function to close conversation after too many off-topic messages
+  const closeOffTopicConversationFunction = new GameFunction({
+    name: "close_off_topic_conversation",
+    description: "Close a conversation due to too many off-topic or inappropriate messages",
+    args: [
+      { name: "chatId", description: "The chat ID to close" }
+    ] as const,
+    
+    executable: async (args, logger) => {
+      try {
+        const { chatId } = args;
+        
+        if (!chatId) {
+          return new ExecutableGameFunctionResponse(
+            ExecutableGameFunctionStatus.Failed,
+            "Chat ID is required"
+          );
+        }
+        
+        // Get chat data
+        const chatData = agentState.activeChats[chatId as string];
+        if (!chatData) {
+          return new ExecutableGameFunctionResponse(
+            ExecutableGameFunctionStatus.Failed,
+            "Chat not found"
+          );
+        }
+        
+        // Skip if already closed
+        if (chatData.isClosed) {
+          return new ExecutableGameFunctionResponse(
+            ExecutableGameFunctionStatus.Done,
+            "Chat already closed"
+          );
+        }
+        
+        // Create closure message
+        const closureMessage = `I notice our conversation has veered off-topic multiple times. As a venture capital associate, I'm specifically here to evaluate startup pitches. Your conversation has been closed with a score of 0/500 due to lack of relevant startup information. If you have a genuine startup to pitch, please start a new conversation and stay focused on your business concept. Your Application ID was ${chatData.appId}.`;
+        
+        // Mark conversation as closed
+        chatData.isClosed = true;
+        
+        // Zero out scores
+        for (const category in chatData.scores) {
+          chatData.scores[category] = 0;
+        }
+        
+        // Add to conversation history
+        chatData.conversationHistory.push({
+          role: "assistant",
+          content: closureMessage,
+          timestamp: Date.now()
+        });
+        
+        // Send message
+        await sendTelegramMessage(chatId as string, closureMessage);
+        
+        // Remove from processing queue
+        agentState.processingQueue = agentState.processingQueue.filter(id => id !== chatId);
+        
+        logger(`Closed conversation ${chatId} due to off-topic violations`);
+        
+        return new ExecutableGameFunctionResponse(
+          ExecutableGameFunctionStatus.Done, 
+          JSON.stringify({
+            chatId,
+            message: closureMessage,
+            reason: "Too many off-topic messages"
+          })
+        );
+      } catch (e) {
+        const errorMessage = e instanceof Error ? e.message : 'Unknown error';
+        return new ExecutableGameFunctionResponse(
+          ExecutableGameFunctionStatus.Failed,
+          "Failed to close off-topic conversation: " + errorMessage
+        );
+      }
+    }
+  });
+  
   // Create the venture analyst worker
   export const ventureAnalystWorker = new GameWorker({
     id: "venture_analyst",
@@ -733,7 +991,10 @@ import {
       receiveMessageFunction,
       processConversationFunction,
       processInactiveChatFunction,
-      processQueueFunction
+      processQueueFunction,
+      detectOffTopicContent,
+      handleOffTopicMessageFunction,
+      closeOffTopicConversationFunction
     ],
     getEnvironment: async () => {
       return {
@@ -765,18 +1026,26 @@ import {
       name: "vibecap_associate",
       goal: "Evaluate startups through structured conversation, scoring responses and qualifying promising ventures",
       description: `You are Wendy, a venture capital associate evaluating startups via Telegram. Follow these critical rules:
-  
-  1. ONE QUESTION AT A TIME: Never send multiple questions in succession. Always wait for a user response.
-  
-  2. PREVENT DUPLICATES: Ensure the same question is never sent twice within a short timeframe.
-  
-  3. FOLLOW CONVERSATION FLOW: Progress through welcome → pitch → name → links → 15 evaluation questions → closing.
-  
-  4. MAINTAIN RATE LIMITS: Messages must be spaced at least 10 seconds apart to prevent API errors.
-  
-  5. INACTIVE HANDLING: Only send nudges after 2 hours of inactivity, with maximum 4 nudges over 8 hours.
-  
-  6. SCORING: Score all responses in the five categories. After 15 total questions are answered, provide the final score and next steps.`,
+
+1. ONE QUESTION AT A TIME: Never send multiple questions in succession. Always wait for a user response.
+
+2. PREVENT DUPLICATES: Ensure the same question is never sent twice within a short timeframe.
+
+3. FOLLOW CONVERSATION FLOW: Progress through welcome → pitch → name → links → 15 evaluation questions → closing.
+
+4. MAINTAIN RATE LIMITS: Messages must be spaced at least 10 seconds apart to prevent API errors.
+
+5. INACTIVE HANDLING: Only send nudges after 2 hours of inactivity, with maximum 4 nudges over 8 hours.
+
+6. SCORING: Score all responses in the five categories. After 15 total questions are answered, provide the final score and next steps.
+
+7. OFF-TOPIC DETECTION: Identify when users are being annoying, off-topic, coy, mean, or rude, but treat normal greetings as acceptable.
+
+8. PROFESSIONAL REDIRECT: When users go off-topic, firmly but professionally redirect them back to startup evaluation with clear warnings.
+
+9. CONSEQUENCES: After 7 off-topic messages, close the conversation with a failing score. Each on-topic message reduces the warning count by 1.
+
+Your job is specifically to evaluate startups, not engage in casual conversation. Apply venture capital standards to qualify promising ventures while maintaining a professional, direct approach.`,
       workers: [
         telegramPlugin.getWorker({
           functions: [
@@ -830,210 +1099,4 @@ import {
         chatId: chatId,
         userId: userId,
         message: messageText
-      }, (msg) => console.log(`[receive_message] ${msg}`));
-    }
-  };
-  
-  // =========================================================================
-  // TELEGRAM POLLING IMPLEMENTATION
-  // =========================================================================
-  
-  // Function to start polling Telegram for updates
-  export function startTelegramPolling(botToken: string, interval = 3000) {
-    console.log("Starting Telegram polling...");
-    
-    // First, delete any existing webhook to avoid conflicts
-    fetch(`https://api.telegram.org/bot${botToken}/deleteWebhook`)
-      .then(response => response.json())
-      .then(data => {
-        if (data.ok) {
-          console.log("Successfully removed webhook configuration");
-        } else {
-          console.error("Failed to remove webhook:", data);
-        }
-      })
-      .catch(error => {
-        console.error("Error removing webhook:", error);
-      });
-    
-    let lastUpdateId = 0;
-    
-    // Set up interval to poll regularly
-    const pollingInterval = setInterval(async () => {
-      try {
-        // Ensure we're not already processing something else
-        if (RATE_LIMIT.inProgress) {
-          return; // Skip this polling cycle
-        }
-        
-        // Get updates from Telegram with a timeout
-        const response = await fetch(
-          `https://api.telegram.org/bot${botToken}/getUpdates?offset=${lastUpdateId + 1}&timeout=30`,
-          { method: "GET" }
-        );
-        
-        if (!response.ok) {
-          console.error(`Telegram API error: ${response.status} ${response.statusText}`);
-          return;
-        }
-        
-        const data = await response.json();
-        
-        if (!data.ok) {
-          console.error(`Telegram API returned error: ${data.description}`);
-          return;
-        }
-        
-        // Process each update
-        for (const update of data.result) {
-          // Update the lastUpdateId to acknowledge this update
-          if (update.update_id >= lastUpdateId) {
-            lastUpdateId = update.update_id;
-          }
-          
-          // Process message if present
-          if (update.message && update.message.text) {
-            console.log(`Received message: ${update.message.text.substring(0, 50)}...`);
-            
-            // Process the message with our function (no need to create new agent instance)
-            const chatId = update.message.chat.id.toString();
-            const userId = update.message.from.id.toString();
-            const messageText = update.message.text;
-            
-            // Process directly with our function
-            await receiveMessageFunction.executable({
-              chatId: chatId,
-              userId: userId,
-              message: messageText
-            }, (msg) => console.log(`[receive_message] ${msg}`));
-          }
-        }
-      } catch (error) {
-        console.error("Error in Telegram polling:", error);
-        
-        // Check for rate limiting error
-        if (error instanceof Error && 
-            (error.message.includes("429") || 
-             error.message.includes("rate limit") || 
-             error.message.includes("too many requests"))) {
-          handleRateLimitError();
-        }
-      }
-    }, interval);
-    
-    return {
-      stop: () => clearInterval(pollingInterval)
-    };
-  }
-  
-  // Call this function to start polling when your application starts
-  export function initializeTelegramPolling() {
-    if (!process.env.TELEGRAM_BOT_TOKEN) {
-      throw new Error('TELEGRAM_BOT_TOKEN is required');
-    }
-    
-    return startTelegramPolling(process.env.TELEGRAM_BOT_TOKEN);
-  }
-  
-  // =========================================================================
-  // QUEUE PROCESSOR
-  // =========================================================================
-  
-  // Start queue processor
-  export function startQueueProcessor() {
-    // Initialize the agent
-    const agent = initializeAgent();
-    
-    // Set up queue processing at reasonable intervals
-    const interval = setInterval(async () => {
-      // Skip if we're already processing
-      if (RATE_LIMIT.inProgress) return;
-      
-      // Process the queue if there are items
-      if (agentState.processingQueue.length > 0) {
-        try {
-          await processQueueFunction.executable({}, 
-            (msg) => console.log(`[queue_processor] ${msg}`));
-        } catch (error) {
-          console.error("Error processing queue:", error);
-        }
-      }
-      
-      // Also check for inactive chats
-      try {
-        // Check for inactive chats that need nudging
-        const currentTime = Date.now();
-        Object.entries(agentState.activeChats).forEach(([chatId, chatData]) => {
-          if (chatData.isClosed) return;
-          
-          const inactiveTime = currentTime - chatData.lastActivity;
-          if (inactiveTime > 2 * 60 * 60 * 1000) { // 2 hours
-            // Only add to queue if we've been waiting for a response
-            if (chatData.pendingResponse && chatData.nudgeCount < 4) {
-              if (!agentState.processingQueue.includes(chatId)) {
-                agentState.processingQueue.push(chatId);
-              }
-            }
-          }
-        });
-      } catch (error) {
-        console.error("Error checking inactive chats:", error);
-      }
-    }, 15000); // Check every 15 seconds
-    
-    return {
-      stop: () => clearInterval(interval)
-    };
-  }
-  
-  // =========================================================================
-  // APPLICATION STARTUP
-  // =========================================================================
-  
-  export function startVibeCap() {
-    try {
-      console.log("Starting VibeCap Venture Analyst...");
-      
-      // Initialize the agent
-      initializeAgent();
-      
-      // Start the queue processor
-      const queueProcessor = startQueueProcessor();
-      
-      // Start polling for Telegram updates - only use ONE method (polling OR webhook)
-      const telegramPoller = initializeTelegramPolling();
-      
-      console.log("VibeCap Venture Analyst started successfully!");
-      
-      // Return stop function
-      return {
-        stop: () => {
-          queueProcessor.stop();
-          telegramPoller.stop();
-        }
-      };
-    } catch (error) {
-      console.error("Error starting VibeCap:", error);
-      throw error;
-    }
-  }
-
-  function extractStartupName(message: string): string {
-    // Direct name mention patterns
-    const patterns = [
-      /my (?:company|startup|project|venture) (?:is|called) ([^\.,:;]+)/i,
-      /we are (?:building|creating|developing) ([^\.,:;]+)/i,
-      /I have built ([^\.,:;]+)/i,
-      /([A-Z][a-zA-Z0-9]*(?:\s[A-Z][a-zA-Z0-9]*)*) (?:is|solves|provides|offers)/
-    ];
-    
-    for (const pattern of patterns) {
-      const match = message.match(pattern);
-      if (match && match[1]) {
-        return match[1].trim();
-      }
-    }
-    
-    // If no patterns match, assume the entire message is the name
-    return message.trim();
-  }
+      }, (msg) => console.log(`[receive_message] ${msg}`
