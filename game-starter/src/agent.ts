@@ -239,7 +239,7 @@ const sendTelegramMessage = async (chatId: string, text: string): Promise<boolea
 };
 
 // Helper function to detect bad behavior in user messages
-const detectBadBehavior = (message: string): { isBad: boolean; isRude: boolean; reason: string } => {
+const detectBadBehavior = (message: string, conversationStage?: string): { isBad: boolean; isRude: boolean; reason: string } => {
     if (!message) return { isBad: true, isRude: false, reason: "Empty message" };
     
     // Convert to lowercase for easier matching
@@ -251,18 +251,34 @@ const detectBadBehavior = (message: string): { isBad: boolean; isRude: boolean; 
         return { isBad: false, isRude: false, reason: "" };
     }
     
-    // 2. Handle data privacy related questions - consider these valid
+    // 2. Handle data privacy related questions - consider these valid with more lenient detection
     if (lowerMsg.includes("data privacy") || 
         lowerMsg.includes("protect my data") || 
-        lowerMsg.includes("what will you do with my data") || 
-        (lowerMsg.includes("data") && lowerMsg.includes("secure"))) {
+        lowerMsg.includes("what will you do with my data") ||
+        lowerMsg.includes("what do you do with my data") ||
+        lowerMsg.includes("what about my data") ||
+        (lowerMsg.includes("data") && (
+            lowerMsg.includes("secure") || 
+            lowerMsg.includes("protect") || 
+            lowerMsg.includes("use") || 
+            lowerMsg.includes("privacy") ||
+            lowerMsg.includes("how")
+        ))) {
+        return { isBad: false, isRude: false, reason: "" };
+    }
+    
+    // Special case: Allow single word responses when asking for startup name
+    if (conversationStage === 'startup_name') {
+        return { isBad: false, isRude: false, reason: "" };
+    }
+    
+    // Special case: Allow "No links" response
+    if (lowerMsg === "no links") {
         return { isBad: false, isRude: false, reason: "" };
     }
     
     // Check for very short messages (except those that might be startup names)
     if (lowerMsg.split(/\s+/).length < 3 && lowerMsg.length < 15) {
-        // Check if this might be a valid startup name or "no links"
-        if (lowerMsg === "no links") return { isBad: false, isRude: false, reason: "" };
         return { isBad: true, isRude: false, reason: "Message too short to be meaningful" };
     }
     
@@ -349,7 +365,15 @@ const receiveMessageFunction = new GameFunction({
                 message.toLowerCase().includes("data privacy") || 
                 message.toLowerCase().includes("protect my data") || 
                 message.toLowerCase().includes("what will you do with my data") ||
-                (message.toLowerCase().includes("data") && message.toLowerCase().includes("secure"))
+                message.toLowerCase().includes("what do you do with my data") ||
+                message.toLowerCase().includes("what about my data") ||
+                (message.toLowerCase().includes("data") && (
+                    message.toLowerCase().includes("secure") || 
+                    message.toLowerCase().includes("protect") || 
+                    message.toLowerCase().includes("use") || 
+                    message.toLowerCase().includes("privacy") ||
+                    message.toLowerCase().includes("how")
+                ))
             )) {
                 logger(`Detected data privacy question in chat ${chatId}`);
                 
@@ -382,7 +406,7 @@ const receiveMessageFunction = new GameFunction({
 
             // Check for bad behavior
             if (message) {
-                const behaviorCheck = detectBadBehavior(message);
+                const behaviorCheck = detectBadBehavior(message, chatData.conversationStage);
                 if (behaviorCheck.isBad) {
                     logger(`Detected bad behavior in chat ${chatId}: ${behaviorCheck.reason}`);
                     
@@ -525,7 +549,15 @@ const processConversationFunction = new GameFunction({
                     lastMessage.toLowerCase().includes("data privacy") || 
                     lastMessage.toLowerCase().includes("protect my data") || 
                     lastMessage.toLowerCase().includes("what will you do with my data") ||
-                    (lastMessage.toLowerCase().includes("data") && lastMessage.toLowerCase().includes("secure"))
+                    lastMessage.toLowerCase().includes("what do you do with my data") ||
+                    lastMessage.toLowerCase().includes("what about my data") ||
+                    (lastMessage.toLowerCase().includes("data") && (
+                        lastMessage.toLowerCase().includes("secure") || 
+                        lastMessage.toLowerCase().includes("protect") || 
+                        lastMessage.toLowerCase().includes("use") || 
+                        lastMessage.toLowerCase().includes("privacy") ||
+                        lastMessage.toLowerCase().includes("how")
+                    ))
                 )) {
                     logger(`Detected data privacy question in chat ${chatId}`);
                     
@@ -555,7 +587,7 @@ const processConversationFunction = new GameFunction({
                 }
                 
                 // Check for other bad behavior
-                const behaviorCheck = detectBadBehavior(lastUserMessages[0].content);
+                const behaviorCheck = detectBadBehavior(lastUserMessages[0].content, chatData.conversationStage);
                 if (behaviorCheck.isBad) {
                     logger(`Detected bad behavior in chat ${chatId}: ${behaviorCheck.reason}`);
                     
@@ -1025,12 +1057,14 @@ EXAMPLES OF PROBLEMATIC MESSAGES:
 - "I didn't share anything dummy" (rude, insulting)
 - "Wow you are really bad huh?" (rude)
 - "Haha you suck" (rude)
-- "test" or "hmm" or single-word responses (evasive)
+- "test" or "hmm" or single-word responses (evasive) - EXCEPT single-word startup names are fine
 
 IMPORTANT EXCEPTIONS:
 1. '/start' commands are normal Telegram commands and should trigger a welcome message
-2. Questions about data privacy or data security are legitimate and should get this response:
+2. When asking for startup name, single-word responses (like "Apple", "Nike" or "Cake") are perfectly valid
+3. Questions about data privacy or data security are legitimate and must get this exact response:
    "All data is secured and encrypted in transit and at rest, the founders have the ability to review the data for further investment."
+4. Examples of valid data questions include "What do you do with my data?", "How is my data protected?", "What about my data?", etc.
 
 HANDLING PROBLEMATIC BEHAVIOR:
 1. Give the user at least TWO warnings before considering disqualification
