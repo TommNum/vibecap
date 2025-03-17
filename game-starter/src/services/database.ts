@@ -12,6 +12,7 @@ export interface Conversation {
     app_id: string;
     user_id: string;
     telegram_id?: string;
+    telegram_username?: string;
     startup_name: string;
     startup_pitch: string;
     startup_links: string[];
@@ -39,6 +40,7 @@ export const dbService = {
         app_id VARCHAR(255) PRIMARY KEY,
         user_id VARCHAR(255) NOT NULL,
         telegram_id VARCHAR(255), 
+        telegram_username VARCHAR(255),
         startup_name TEXT,
         startup_pitch TEXT,
         startup_links TEXT[],
@@ -50,23 +52,23 @@ export const dbService = {
       );
     `);
         
-        // Ensure we run the migration to add telegram_id if needed
-        await this.migrateAddTelegramId();
+        // Ensure we run the migration to add telegram fields if needed
+        await this.migrateAddTelegramColumns();
     },
     
-    // Migration to add telegram_id column if it doesn't exist
-    async migrateAddTelegramId() {
+    // Migration to add telegram columns if they don't exist
+    async migrateAddTelegramColumns() {
         try {
             // Check if the telegram_id column exists
-            const columnCheck = await pool.query(`
+            const idColumnCheck = await pool.query(`
                 SELECT column_name 
                 FROM information_schema.columns 
                 WHERE table_name = 'conversations' 
                 AND column_name = 'telegram_id';
             `);
             
-            // If column doesn't exist, add it
-            if (columnCheck.rows.length === 0) {
+            // If telegram_id column doesn't exist, add it
+            if (idColumnCheck.rows.length === 0) {
                 console.log('Adding telegram_id column to conversations table...');
                 await pool.query(`
                     ALTER TABLE conversations 
@@ -85,17 +87,38 @@ export const dbService = {
             } else {
                 console.log('telegram_id column already exists in conversations table');
             }
+            
+            // Check if the telegram_username column exists
+            const usernameColumnCheck = await pool.query(`
+                SELECT column_name 
+                FROM information_schema.columns 
+                WHERE table_name = 'conversations' 
+                AND column_name = 'telegram_username';
+            `);
+            
+            // If telegram_username column doesn't exist, add it
+            if (usernameColumnCheck.rows.length === 0) {
+                console.log('Adding telegram_username column to conversations table...');
+                await pool.query(`
+                    ALTER TABLE conversations 
+                    ADD COLUMN telegram_username VARCHAR(255);
+                `);
+                
+                console.log('telegram_username column added successfully');
+            } else {
+                console.log('telegram_username column already exists in conversations table');
+            }
         } catch (error) {
-            console.error('Error in telegram_id migration:', error);
+            console.error('Error in telegram columns migration:', error);
         }
     },
 
     async saveConversation(conversation: Conversation): Promise<void> {
         const query = `
       INSERT INTO conversations (
-        app_id, user_id, telegram_id, startup_name, startup_pitch, startup_links,
+        app_id, user_id, telegram_id, telegram_username, startup_name, startup_pitch, startup_links,
         conversation_history, scores, status
-      ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)
+      ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)
       ON CONFLICT (app_id) DO UPDATE SET
         startup_name = EXCLUDED.startup_name,
         startup_pitch = EXCLUDED.startup_pitch,
@@ -110,6 +133,7 @@ export const dbService = {
             conversation.app_id,
             conversation.user_id,
             conversation.telegram_id || conversation.user_id,
+            conversation.telegram_username || "",
             conversation.startup_name,
             conversation.startup_pitch,
             conversation.startup_links,
