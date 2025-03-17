@@ -170,24 +170,27 @@ export const telegramPlugin = new TelegramPlugin({
 });
 
 // Function to safely send a message to Telegram (with duplicate prevention)
-const sendTelegramMessage = async (chatId: string, text: string): Promise<boolean> => {
+const sendTelegramMessage = async (chatId: string, text: string, isStartCommand = false): Promise<boolean> => {
     // Get chat data
     const chatData = agentState.activeChats[chatId];
     if (!chatData) return false;
 
-    // Check if this is a duplicate message (sent within the last 30 seconds)
-    const messageHash = `${chatId}:${text}`;
-    const recentMessage = recentMessages.get(messageHash);
+    // Skip duplicate checks for /start command messages
+    if (!isStartCommand) {
+        // Check if this is a duplicate message (sent within the last 30 seconds)
+        const messageHash = `${chatId}:${text}`;
+        const recentMessage = recentMessages.get(messageHash);
 
-    if (recentMessage && (Date.now() - recentMessage.timestamp < 30000)) {
-        console.log(`Preventing duplicate message to chat ${chatId}`);
-        return false;
-    }
+        if (recentMessage && (Date.now() - recentMessage.timestamp < 30000)) {
+            console.log(`Preventing duplicate message to chat ${chatId}`);
+            return false;
+        }
 
-    // Check if we're sending the exact same message as the last one
-    if (chatData.lastMessage === text) {
-        console.log(`Preventing duplicate of last message to chat ${chatId}`);
-        return false;
+        // Check if we're sending the exact same message as the last one
+        if (chatData.lastMessage === text) {
+            console.log(`Preventing duplicate of last message to chat ${chatId}`);
+            return false;
+        }
     }
 
     try {
@@ -403,7 +406,7 @@ const receiveMessageFunction = new GameFunction({
 
                 const welcomeMsg = "Hi! I am Wendy, your AIssociate at Culture Capital. I'd like to learn about you're working on to evaluate its potential. Could you start by telling me the project name and what it does in 1-2 sentences?";
 
-                await sendTelegramMessage(chatId as string, welcomeMsg);
+                await sendTelegramMessage(chatId as string, welcomeMsg, true);
                 return new ExecutableGameFunctionResponse(
                     ExecutableGameFunctionStatus.Done,
                     JSON.stringify({ chatId, message: welcomeMsg, reset: true })
@@ -711,7 +714,7 @@ const processConversationFunction = new GameFunction({
                 logger(`Sending welcome message to chat ${chatId}`);
 
                 // Send directly
-                await sendTelegramMessage(chatId as string, welcomeMsg);
+                await sendTelegramMessage(chatId as string, welcomeMsg, true);
 
                 // Remove from processing queue
                 agentState.processingQueue = agentState.processingQueue.filter(id => id !== chatId);
