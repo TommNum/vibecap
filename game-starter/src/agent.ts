@@ -277,6 +277,19 @@ const detectBadBehavior = (message: string, conversationStage?: string): { isBad
         return { isBad: false, isRude: false, reason: "" };
     }
 
+    // NEW: Allow common positive one-word responses and greetings
+    const positiveResponses = [
+        "hi", "hello", "hey", "thanks", "thank", "yes", "yeah", "yep", "sure", 
+        "ok", "okay", "great", "good", "nice", "cool", "perfect", "agreed", 
+        "correct", "absolutely", "definitely", "exactly", "👍", "👋", "🙏"
+    ];
+    
+    if (positiveResponses.includes(lowerMsg) || 
+        positiveResponses.some(word => lowerMsg === word) || 
+        /^(hi|hey|hello)( there)?!?$/.test(lowerMsg)) {
+        return { isBad: false, isRude: false, reason: "" };
+    }
+
     // Check for very short messages (except those that might be startup names)
     if (lowerMsg.split(/\s+/).length < 3 && lowerMsg.length < 15) {
         return { isBad: true, isRude: false, reason: "Message too short to be meaningful" };
