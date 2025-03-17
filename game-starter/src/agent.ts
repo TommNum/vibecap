@@ -364,11 +364,11 @@ const receiveMessageFunction = new GameFunction({
                     .filter(chat =>
                         chat.userId === userId &&
                         chat.isClosed &&
-                        chat.scores &&
-                        Object.values(chat.scores).some(score => score > 0) &&
+                        chat.scores && // Ensure scores exist
+                        Object.values(chat.scores).some(score => score > 0) && // Has actual scores
                         chat.conversationHistory.some(msg =>
                             msg.role === "assistant" &&
-                            msg.content.includes("Total Score:")
+                            msg.content.includes("Total Score:") // Verify evaluation was completed
                         )
                     );
 
@@ -394,9 +394,6 @@ const receiveMessageFunction = new GameFunction({
 
                 // Reset chat data completely
                 agentState.activeChats[chatId as string] = initChatData(chatId as string, userId as string);
-
-                // Set initial conversation stage
-                agentState.activeChats[chatId as string].conversationStage = 'startup_name';
 
                 // Clear any recent messages for this chat
                 for (const [key] of recentMessages.entries()) {
@@ -739,6 +736,18 @@ const processConversationFunction = new GameFunction({
             let responseMsg = "";
 
             switch (chatData.conversationStage) {
+                case 'welcome':
+                    // Skip sending welcome message if it's from a /start command
+                    if (chatData.conversationHistory.length === 0) {
+                        responseMsg = "Hi! I am Wendy, your AIssociate at Culture Capital. I'd like to learn about you're working on to evaluate its potential. Could you start by telling me the project name and what it does in 1-2 sentences?";
+                        chatData.conversationStage = 'startup_name';
+                    } else {
+                        // Move to next stage if welcome was already sent
+                        chatData.conversationStage = 'startup_name';
+                        // responseMsg = "Could you tell me your project name?";
+                    }
+                    break;
+
                 case "startup_name":
                     // Store startup name
                     chatData.startupName = lastUserMessages[0].content;
