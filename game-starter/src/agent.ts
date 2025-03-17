@@ -643,7 +643,7 @@ const processConversationFunction = new GameFunction({
 
             // Handle first-time welcome message if no history
             if (chatData.conversationHistory.filter(msg => msg.role === "assistant").length === 0) {
-                const welcomeMsg = "Hi! I am Wendy, your AIssociate at Culture Capital. I'd like to learn about you're working on to evaluate its potential. Could you start by telling me the project name and what it does in 1-2 sentences?"";
+                const welcomeMsg = "Hi! I am Wendy, your AIssociate at Culture Capital. I'd like to learn about you're working on to evaluate its potential. Could you start by telling me the project name and what it does in 1-2 sentences?";
 
                 chatData.conversationHistory.push({
                     role: "assistant",
