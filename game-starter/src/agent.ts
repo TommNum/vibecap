@@ -54,6 +54,7 @@ const agentState = {
     activeChats: {} as Record<string, {
         appId: string;
         userId: string;
+        telegramId: string;
         startupName: string;
         startupPitch: string;
         startupLinks: string[];
@@ -90,6 +91,7 @@ const initChatData = (chatId: string, userId: string) => {
         agentState.activeChats[chatId] = {
             appId,
             userId,
+            telegramId: userId,
             startupName: '',
             startupPitch: '',
             startupLinks: [],
@@ -922,6 +924,7 @@ const processConversationFunction = new GameFunction({
             await dbService.saveConversation({
                 app_id: chatData.appId,
                 user_id: chatData.userId,
+                telegram_id: chatData.telegramId,
                 startup_name: chatData.startupName,
                 startup_pitch: chatData.startupPitch,
                 startup_links: chatData.startupLinks,
@@ -1457,6 +1460,11 @@ export function startQueueProcessor() {
 export function startVibeCap() {
     try {
         console.log("Starting VibeCap Venture Analyst...");
+
+        // Initialize database tables
+        dbService.initTables()
+            .then(() => console.log("Database tables initialized"))
+            .catch(err => console.error("Error initializing database tables:", err));
 
         // Initialize the agent
         initializeAgent();
