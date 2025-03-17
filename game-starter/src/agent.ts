@@ -365,6 +365,52 @@ const receiveMessageFunction = new GameFunction({
                 );
             }
 
+            // Special handling for /start - priority reset
+            if (message && message.trim() === "/start") {
+                logger(`Received /start command in chat ${chatId}, resetting conversation`);
+                
+                // Initialize or get chat data
+                const chatData = initChatData(chatId as string, userId as string);
+                
+                // Reset conversation to welcome state
+                chatData.conversationStage = 'welcome';
+                chatData.startupName = '';
+                chatData.startupPitch = '';
+                chatData.startupLinks = [];
+                chatData.nudgeCount = 0;
+                chatData.questionCount = 0;
+                chatData.messageCount = 1;
+                chatData.pendingResponse = false;
+                chatData.isClosed = false;
+                
+                // Reset scores
+                Object.keys(chatData.scores).forEach(key => {
+                    chatData.scores[key as keyof typeof chatData.scores] = 0;
+                });
+                
+                // Update conversation history - keep only this start command
+                chatData.conversationHistory = [{
+                    role: "user",
+                    content: "/start",
+                    timestamp: Date.now()
+                }];
+                
+                // Add to processing queue with high priority
+                if (!agentState.processingQueue.includes(chatId as string)) {
+                    // Add to beginning of queue for immediate processing
+                    agentState.processingQueue.unshift(chatId as string);
+                }
+                
+                return new ExecutableGameFunctionResponse(
+                    ExecutableGameFunctionStatus.Done, 
+                    JSON.stringify({
+                        chatId,
+                        message: "/start",
+                        action: "reset_conversation"
+                    })
+                );
+            }
+
             // Initialize or get chat data
             const chatData = initChatData(chatId as string, userId as string);
 
@@ -521,6 +567,51 @@ const processConversationFunction = new GameFunction({
                 return new ExecutableGameFunctionResponse(
                     ExecutableGameFunctionStatus.Failed,
                     "Chat not found"
+                );
+            }
+
+            // Special handling for /start command - check if last message is /start
+            const lastUserMessage = chatData.conversationHistory
+                .filter(msg => msg.role === "user")
+                .sort((a, b) => b.timestamp - a.timestamp)[0];
+                
+            if (lastUserMessage && lastUserMessage.content.trim() === "/start") {
+                // This is a fresh /start command - send welcome message immediately
+                logger(`Processing /start command for chat ${chatId}`);
+                
+                // Reset conversation to welcome state if not already done
+                chatData.conversationStage = 'welcome';
+                
+                // Create welcome message
+                const welcomeMsg = "Hi! I am Wendy, your AIssociate at Culture Capital. I'd like to learn about you're working on to evaluate its potential. Could you start by telling me the project name and what it does in 1-2 sentences?";
+                
+                // Only add to history if not already there
+                const alreadyResponded = chatData.conversationHistory
+                    .filter(msg => msg.role === "assistant")
+                    .some(msg => msg.content === welcomeMsg);
+                    
+                if (!alreadyResponded) {
+                    // Add to conversation history
+                    chatData.conversationHistory.push({
+                        role: "assistant",
+                        content: welcomeMsg,
+                        timestamp: Date.now()
+                    });
+                    
+                    // Send directly
+                    await sendTelegramMessage(chatId as string, welcomeMsg);
+                }
+                
+                // Remove from processing queue
+                agentState.processingQueue = agentState.processingQueue.filter(id => id !== chatId);
+                
+                return new ExecutableGameFunctionResponse(
+                    ExecutableGameFunctionStatus.Done,
+                    JSON.stringify({
+                        chatId,
+                        message: welcomeMsg,
+                        stage: "welcome"
+                    })
                 );
             }
 
@@ -1157,7 +1248,48 @@ export const handleTelegramUpdate = (update: any) => {
         const userId = update.message.from.id.toString();
         const messageText = update.message.text;
 
-        // Directly process the message with our function
+        // Special handling for /start command to ensure immediate response
+        if (messageText.trim() === "/start") {
+            // Show typing indicator immediately
+            telegramPlugin.sendChatActionFunction.executable({
+                chat_id: chatId,
+                action: "typing"
+            }, (msg) => console.log(`[send_chat_action] ${msg}`));
+            
+            // Initialize chat data
+            const chatData = initChatData(chatId, userId);
+            
+            // Reset conversation state
+            chatData.conversationStage = 'welcome';
+            chatData.startupName = '';
+            chatData.startupPitch = '';
+            chatData.startupLinks = [];
+            chatData.nudgeCount = 0;
+            chatData.questionCount = 0;
+            
+            // Create welcome message
+            const welcomeMsg = "Hi! I am Wendy, your AIssociate at Culture Capital. I'd like to learn about you're working on to evaluate its potential. Could you start by telling me the project name and what it does in 1-2 sentences?";
+            
+            // Add to conversation history
+            chatData.conversationHistory.push({
+                role: "user",
+                content: "/start",
+                timestamp: Date.now()
+            });
+            
+            chatData.conversationHistory.push({
+                role: "assistant",
+                content: welcomeMsg,
+                timestamp: Date.now()
+            });
+            
+            // Send welcome message immediately
+            sendTelegramMessage(chatId, welcomeMsg)
+                .then(() => console.log(`Sent immediate welcome message to chat ${chatId}`))
+                .catch(err => console.error(`Error sending welcome message: ${err}`));
+        }
+
+        // Process the message with our function
         receiveMessageFunction.executable({
             chatId: chatId,
             userId: userId,
