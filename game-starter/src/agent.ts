@@ -173,13 +173,12 @@ export const telegramPlugin = new TelegramPlugin({
 const sendTelegramMessage = async (chatId: string, text: string, isStartCommand = false): Promise<boolean> => {
     // Get chat data
     const chatData = agentState.activeChats[chatId];
-    const messageHash = `${chatId}:${text}`;
-
     if (!chatData) return false;
 
     // Skip duplicate checks for /start command messages
     if (!isStartCommand) {
         // Check if this is a duplicate message (sent within the last 30 seconds)
+        const messageHash = `${chatId}:${text}`;
         const recentMessage = recentMessages.get(messageHash);
 
         if (recentMessage && (Date.now() - recentMessage.timestamp < 30000)) {
