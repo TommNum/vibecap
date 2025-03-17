@@ -353,63 +353,6 @@ const receiveMessageFunction = new GameFunction({
             chatData.messageCount++;
             chatData.pendingResponse = false; // User has responded
 
-            // Special handling for /start command
-            if (message?.trim() === "/start") {
-                // Check for recently completed evaluations
-                const previousCompletedChats = Object.values(agentState.activeChats)
-                    .filter(chat =>
-                        chat.userId === userId &&
-                        chat.isClosed &&
-                        chat.scores && // Ensure scores exist
-                        Object.values(chat.scores).some(score => score > 0) && // Has actual scores
-                        chat.conversationHistory.some(msg =>
-                            msg.role === "assistant" &&
-                            msg.content.includes("Total Score:") // Verify evaluation was completed
-                        )
-                    );
-
-                const mostRecentEvaluation = previousCompletedChats.sort((a, b) =>
-                    (b.lastActivity || 0) - (a.lastActivity || 0)
-                )[0];
-
-                if (mostRecentEvaluation) {
-                    const oneWeek = 7 * 24 * 60 * 60 * 1000;
-                    const timeSinceLastEval = Date.now() - mostRecentEvaluation.lastActivity;
-
-                    if (timeSinceLastEval < oneWeek) {
-                        const daysLeft = Math.ceil((oneWeek - timeSinceLastEval) / (24 * 60 * 60 * 1000));
-                        const message = `I notice you've recently completed a pitch evaluation. Please wait ${daysLeft} more day${daysLeft > 1 ? 's' : ''} before starting a new conversation. This helps ensure each evaluation receives proper consideration.`;
-
-                        await sendTelegramMessage(chatId as string, message);
-                        return new ExecutableGameFunctionResponse(
-                            ExecutableGameFunctionStatus.Done,
-                            JSON.stringify({ chatId, message, cooldown: true })
-                        );
-                    }
-                }
-
-                // Reset chat data completely
-                agentState.activeChats[chatId as string] = initChatData(chatId as string, userId as string);
-
-                // Clear any recent messages for this chat
-                for (const [key] of recentMessages.entries()) {
-                    if (key.startsWith(chatId as string)) {
-                        recentMessages.delete(key);
-                    }
-                }
-
-                // Remove from processing queue if present
-                agentState.processingQueue = agentState.processingQueue.filter(id => id !== chatId);
-
-                const welcomeMsg = "Hi! I am Wendy, your AIssociate at Culture Capital. I'd like to learn about you're working on to evaluate its potential. Could you start by telling me the project name and what it does in 1-2 sentences?";
-
-                await sendTelegramMessage(chatId as string, welcomeMsg);
-                return new ExecutableGameFunctionResponse(
-                    ExecutableGameFunctionStatus.Done,
-                    JSON.stringify({ chatId, message: welcomeMsg, reset: true })
-                );
-            }
-
             // Add message to conversation history
             chatData.conversationHistory.push({
                 role: "user",
