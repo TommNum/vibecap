@@ -408,8 +408,6 @@ const receiveMessageFunction = new GameFunction({
                 const welcomeMsg = "Hi! I am Wendy, your AIssociate at Culture Capital. I'd like to learn about you're working on to evaluate its potential. Could you start by telling me the project name and what it does in 1-2 sentences?";
 
                 await sendTelegramMessage(chatId as string, welcomeMsg, true);
-
-                // Don't add to processing queue for /start command
                 return new ExecutableGameFunctionResponse(
                     ExecutableGameFunctionStatus.Done,
                     JSON.stringify({ chatId, message: welcomeMsg, reset: true })
@@ -513,7 +511,7 @@ const receiveMessageFunction = new GameFunction({
                 }
             }
 
-            // Add to processing queue for non-/start messages
+            // Add to processing queue if not already there
             if (!agentState.processingQueue.includes(chatId as string)) {
                 agentState.processingQueue.push(chatId as string);
             }
@@ -736,16 +734,11 @@ const processConversationFunction = new GameFunction({
             let responseMsg = "";
 
             switch (chatData.conversationStage) {
-                case 'welcome':
-                    // Skip sending welcome message if it's from a /start command
-                    if (chatData.conversationHistory.length === 0) {
-                        responseMsg = "Hi! I am Wendy, your AIssociate at Culture Capital. I'd like to learn about you're working on to evaluate its potential. Could you start by telling me the project name and what it does in 1-2 sentences?";
-                        chatData.conversationStage = 'startup_name';
-                    } else {
-                        // Move to next stage if welcome was already sent
-                        chatData.conversationStage = 'startup_name';
-                        // responseMsg = "Could you tell me your project name?";
-                    }
+                case "welcome":
+                    // Store initial pitch
+                    chatData.startupPitch = lastUserMessages[0].content;
+                    responseMsg = "Thanks for sharing! Could you provide the name of your startup?";
+                    chatData.conversationStage = 'startup_name';
                     break;
 
                 case "startup_name":
