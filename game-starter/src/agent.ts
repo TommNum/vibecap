@@ -281,7 +281,15 @@ const detectBadBehavior = (message: string, conversationStage?: string): { isBad
     const positiveResponses = [
         "hi", "hello", "hey", "thanks", "thank", "yes", "yeah", "yep", "sure", 
         "ok", "okay", "great", "good", "nice", "cool", "perfect", "agreed", 
-        "correct", "absolutely", "definitely", "exactly", "👍", "👋", "🙏"
+        "correct", "absolutely", "definitely", "exactly", "yo", "sup", "gm",
+        "based", "rizz", "fr", "hit me", "👍", "👋", "🙏", "understood", "got it",
+        "alright", "sounds good", "makes sense", "will do", "noted", "done", 
+        "completed", "finished", "sent", "shared", "provided", "submitted", 
+        "appreciate it", "thank you", "thanks a lot", "thx", "ty", "tnx", 
+        "awesome", "amazing", "excellent", "fantastic", "wonderful", "superb",
+        "brilliant", "terrific", "outstanding", "impressive", "remarkable",
+        "no problem", "np", "anytime", "of course", "certainly", "indeed",
+        "true", "right", "affirmative", "roger that", "10-4", "ack", "acknowledged"
     ];
     
     if (positiveResponses.includes(lowerMsg) || 
