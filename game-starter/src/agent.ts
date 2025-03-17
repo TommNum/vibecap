@@ -241,47 +241,47 @@ const sendTelegramMessage = async (chatId: string, text: string): Promise<boolea
 // Helper function to detect bad behavior in user messages
 const detectBadBehavior = (message: string, conversationStage?: string): { isBad: boolean; isRude: boolean; reason: string } => {
     if (!message) return { isBad: true, isRude: false, reason: "Empty message" };
-    
+
     // Convert to lowercase for easier matching
     const lowerMsg = message.toLowerCase().trim();
-    
+
     // Special cases that should not trigger bad behavior
     // 1. Handle /start command specifically - this is a standard Telegram command
     if (lowerMsg === "/start") {
         return { isBad: false, isRude: false, reason: "" };
     }
-    
+
     // 2. Handle data privacy related questions - consider these valid with more lenient detection
-    if (lowerMsg.includes("data privacy") || 
-        lowerMsg.includes("protect my data") || 
+    if (lowerMsg.includes("data privacy") ||
+        lowerMsg.includes("protect my data") ||
         lowerMsg.includes("what will you do with my data") ||
         lowerMsg.includes("what do you do with my data") ||
         lowerMsg.includes("what about my data") ||
         (lowerMsg.includes("data") && (
-            lowerMsg.includes("secure") || 
-            lowerMsg.includes("protect") || 
-            lowerMsg.includes("use") || 
+            lowerMsg.includes("secure") ||
+            lowerMsg.includes("protect") ||
+            lowerMsg.includes("use") ||
             lowerMsg.includes("privacy") ||
             lowerMsg.includes("how")
         ))) {
         return { isBad: false, isRude: false, reason: "" };
     }
-    
+
     // Special case: Allow single word responses when asking for startup name
     if (conversationStage === 'startup_name') {
         return { isBad: false, isRude: false, reason: "" };
     }
-    
+
     // Special case: Allow "No links" response
     if (lowerMsg === "no links") {
         return { isBad: false, isRude: false, reason: "" };
     }
-    
+
     // Check for very short messages (except those that might be startup names)
     if (lowerMsg.split(/\s+/).length < 3 && lowerMsg.length < 15) {
         return { isBad: true, isRude: false, reason: "Message too short to be meaningful" };
     }
-    
+
     // Check for rude content
     const rudePatterns = [
         /\b(stupid|dumb|idiot|suck|bad|useless|fool)\b/i,
@@ -289,32 +289,32 @@ const detectBadBehavior = (message: string, conversationStage?: string): { isBad
         /\?{3,}/,  // Multiple question marks often indicate frustration
         /\byou are\s+([^.]{1,20})\b/i, // "you are X" where X is short (likely an insult)
     ];
-    
+
     for (const pattern of rudePatterns) {
         if (pattern.test(lowerMsg)) {
             return { isBad: true, isRude: true, reason: "Contains rude or inappropriate language" };
         }
     }
-    
+
     // Check for meaningless or testing messages
     const testPatterns = [
         /\b(test|testing)\b/i,
         /\bwhy\s+(would|should|do|can)\s+i\b/i, // Questioning patterns like "why would I"
     ];
-    
+
     for (const pattern of testPatterns) {
         if (pattern.test(lowerMsg) && lowerMsg.length < 30) {
             return { isBad: true, isRude: false, reason: "Appears to be a test message without startup information" };
         }
     }
-    
+
     // Check if message discusses the bot itself rather than a startup
-    if (lowerMsg.includes("you") && lowerMsg.length < 50 && 
-        !lowerMsg.includes("startup") && !lowerMsg.includes("company") && 
+    if (lowerMsg.includes("you") && lowerMsg.length < 50 &&
+        !lowerMsg.includes("startup") && !lowerMsg.includes("company") &&
         !lowerMsg.includes("product") && !lowerMsg.includes("data")) {
         return { isBad: true, isRude: false, reason: "Message is about the bot rather than a startup" };
     }
-    
+
     // Message passes all checks
     return { isBad: false, isRude: false, reason: "" };
 };
@@ -362,38 +362,38 @@ const receiveMessageFunction = new GameFunction({
 
             // Check for data privacy question first - this is a special case
             if (message && (
-                message.toLowerCase().includes("data privacy") || 
-                message.toLowerCase().includes("protect my data") || 
+                message.toLowerCase().includes("data privacy") ||
+                message.toLowerCase().includes("protect my data") ||
                 message.toLowerCase().includes("what will you do with my data") ||
                 message.toLowerCase().includes("what do you do with my data") ||
                 message.toLowerCase().includes("what about my data") ||
                 (message.toLowerCase().includes("data") && (
-                    message.toLowerCase().includes("secure") || 
-                    message.toLowerCase().includes("protect") || 
-                    message.toLowerCase().includes("use") || 
+                    message.toLowerCase().includes("secure") ||
+                    message.toLowerCase().includes("protect") ||
+                    message.toLowerCase().includes("use") ||
                     message.toLowerCase().includes("privacy") ||
                     message.toLowerCase().includes("how")
                 ))
             )) {
                 logger(`Detected data privacy question in chat ${chatId}`);
-                
+
                 const privacyMsg = "All data is secured and encrypted in transit and at rest, the founders have the ability to review the data for further investment.";
-                
+
                 // Add response to conversation history
                 chatData.conversationHistory.push({
                     role: "assistant",
                     content: privacyMsg,
                     timestamp: Date.now()
                 });
-                
+
                 // Send message directly
                 await sendTelegramMessage(chatId as string, privacyMsg);
-                
+
                 // Add to processing queue to continue normal conversation
                 if (!agentState.processingQueue.includes(chatId as string)) {
                     agentState.processingQueue.push(chatId as string);
                 }
-                
+
                 return new ExecutableGameFunctionResponse(
                     ExecutableGameFunctionStatus.Done,
                     JSON.stringify({
@@ -409,42 +409,42 @@ const receiveMessageFunction = new GameFunction({
                 const behaviorCheck = detectBadBehavior(message, chatData.conversationStage);
                 if (behaviorCheck.isBad) {
                     logger(`Detected bad behavior in chat ${chatId}: ${behaviorCheck.reason}`);
-                    
+
                     // Count previous warnings
-                    const previousWarnings = chatData.conversationHistory.filter(m => 
-                        m.role === "assistant" && 
+                    const previousWarnings = chatData.conversationHistory.filter(m =>
+                        m.role === "assistant" &&
                         m.content.includes("I'm here to evaluate startups professionally")).length;
-                    
+
                     // Let's allow more chances (at least 2 warnings before disqualification)
                     let responseMsg = "";
-                    
+
                     // Handle /start command specifically to reset conversation
                     if (message.trim() === "/start") {
                         // If it's a /start command, give a fresh start
                         responseMsg = "Hi! I am Wendy, your AIssociate at Culture Capital. I'd like to learn about you're working on to evaluate its potential. Could you start by telling me the project name and what it does in 1-2 sentences?";
                         chatData.conversationStage = 'welcome';
-                    } 
+                    }
                     else if (previousWarnings < 2) {
                         // First or second warning
                         responseMsg = "I'm here to evaluate startups professionally. If you're interested in pitching your business concept, please share details about your startup. Otherwise, this conversation will be closed.";
-                    } 
+                    }
                     else if (behaviorCheck.isRude) {
                         // Third warning with rudeness - disqualify
                         responseMsg = "As this conversation isn't focused on evaluating a startup, I'll need to end our assessment. Your application is disqualified with a score of 0/500. Please start a new conversation when you're ready to discuss a legitimate venture.";
                         chatData.isClosed = true;
-                    } 
+                    }
                     else {
                         // Third warning without rudeness - one more chance
                         responseMsg = "This is your final opportunity to share information about your startup. Please tell me about your business concept so we can proceed with the evaluation.";
                     }
-                    
+
                     // Add response to conversation history
                     chatData.conversationHistory.push({
                         role: "assistant",
                         content: responseMsg,
                         timestamp: Date.now()
                     });
-                    
+
                     // Send message directly
                     await sendTelegramMessage(chatId as string, responseMsg);
                 }
@@ -540,42 +540,42 @@ const processConversationFunction = new GameFunction({
             const lastUserMessages = chatData.conversationHistory
                 .filter(msg => msg.role === "user")
                 .sort((a, b) => b.timestamp - a.timestamp);
-                
+
             // Check for bad behavior in the latest message
             if (lastUserMessages.length > 0) {
                 // Check for data privacy question first
                 const lastMessage = lastUserMessages[0].content;
                 if (lastMessage && (
-                    lastMessage.toLowerCase().includes("data privacy") || 
-                    lastMessage.toLowerCase().includes("protect my data") || 
+                    lastMessage.toLowerCase().includes("data privacy") ||
+                    lastMessage.toLowerCase().includes("protect my data") ||
                     lastMessage.toLowerCase().includes("what will you do with my data") ||
                     lastMessage.toLowerCase().includes("what do you do with my data") ||
                     lastMessage.toLowerCase().includes("what about my data") ||
                     (lastMessage.toLowerCase().includes("data") && (
-                        lastMessage.toLowerCase().includes("secure") || 
-                        lastMessage.toLowerCase().includes("protect") || 
-                        lastMessage.toLowerCase().includes("use") || 
+                        lastMessage.toLowerCase().includes("secure") ||
+                        lastMessage.toLowerCase().includes("protect") ||
+                        lastMessage.toLowerCase().includes("use") ||
                         lastMessage.toLowerCase().includes("privacy") ||
                         lastMessage.toLowerCase().includes("how")
                     ))
                 )) {
                     logger(`Detected data privacy question in chat ${chatId}`);
-                    
+
                     const privacyMsg = "All data is secured and encrypted in transit and at rest, the founders have the ability to review the data for further investment.";
-                    
+
                     // Add response to conversation history
                     chatData.conversationHistory.push({
                         role: "assistant",
                         content: privacyMsg,
                         timestamp: Date.now()
                     });
-                    
+
                     // Send directly
                     await sendTelegramMessage(chatId as string, privacyMsg);
-                    
+
                     // Remove from processing queue
                     agentState.processingQueue = agentState.processingQueue.filter(id => id !== chatId);
-                    
+
                     return new ExecutableGameFunctionResponse(
                         ExecutableGameFunctionStatus.Done,
                         JSON.stringify({
@@ -585,17 +585,17 @@ const processConversationFunction = new GameFunction({
                         })
                     );
                 }
-                
+
                 // Check for other bad behavior
                 const behaviorCheck = detectBadBehavior(lastUserMessages[0].content, chatData.conversationStage);
                 if (behaviorCheck.isBad) {
                     logger(`Detected bad behavior in chat ${chatId}: ${behaviorCheck.reason}`);
-                    
+
                     // Count previous warnings
-                    const previousWarnings = chatData.conversationHistory.filter(m => 
-                        m.role === "assistant" && 
+                    const previousWarnings = chatData.conversationHistory.filter(m =>
+                        m.role === "assistant" &&
                         m.content.includes("I'm here to evaluate startups professionally")).length;
-                    
+
                     let responseMsg = "";
                     // Handle /start command specifically
                     if (lastUserMessages[0].content.trim() === "/start") {
@@ -606,30 +606,30 @@ const processConversationFunction = new GameFunction({
                     else if (previousWarnings < 2) {
                         // First or second warning
                         responseMsg = "I'm here to evaluate startups professionally. If you're interested in pitching your business concept, please share details about your startup. Otherwise, this conversation will be closed.";
-                    } 
+                    }
                     else if (behaviorCheck.isRude) {
                         // Third warning with rudeness - disqualify
                         responseMsg = "As this conversation isn't focused on evaluating a startup, I'll need to end our assessment. Your application is disqualified with a score of 0/500. Please start a new conversation when you're ready to discuss a legitimate venture.";
                         chatData.isClosed = true;
-                    } 
+                    }
                     else {
                         // Third warning without rudeness - one more chance
                         responseMsg = "This is your final opportunity to share information about your startup. Please tell me about your business concept so we can proceed with the evaluation.";
                     }
-                    
+
                     // Add response to conversation history
                     chatData.conversationHistory.push({
                         role: "assistant",
                         content: responseMsg,
                         timestamp: Date.now()
                     });
-                    
+
                     // Send directly
                     await sendTelegramMessage(chatId as string, responseMsg);
-                    
+
                     // Remove from processing queue
                     agentState.processingQueue = agentState.processingQueue.filter(id => id !== chatId);
-                    
+
                     return new ExecutableGameFunctionResponse(
                         ExecutableGameFunctionStatus.Done,
                         JSON.stringify({
@@ -643,7 +643,7 @@ const processConversationFunction = new GameFunction({
 
             // Handle first-time welcome message if no history
             if (chatData.conversationHistory.filter(msg => msg.role === "assistant").length === 0) {
-                const welcomeMsg = "Hi! I am Wendy, your Associate at Vibe Capital. I'd like to learn about your startup to evaluate its potential. Could you start by telling me what your startup does in 1-2 sentences?";
+                const welcomeMsg = "Hi! I am Wendy, your AIssociate at Culture Capital. I'd like to learn about you're working on to evaluate its potential. Could you start by telling me the project name and what it does in 1-2 sentences?"";
 
                 chatData.conversationHistory.push({
                     role: "assistant",
