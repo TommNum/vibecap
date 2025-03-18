@@ -296,7 +296,7 @@ const welcomingFunction = new GameFunction({
   
   executable: async (args, logger) => {
     try {
-      const isReturning = args.is_returning === true || args.is_returning === "true";
+      const isReturning = args.is_returning === "true" || args.is_returning === true;
       const username = args.username || "";
       const conversationStage = args.conversation_stage || "initial";
       const userResponse = args.user_response || "";
@@ -376,18 +376,11 @@ const welcomingFunction = new GameFunction({
         
       } else if (conversationStage === "collecting_details") {
         // Analyze user response to extract startup information
-        // This would be handled by sophisticated NLP in a real implementation
-        // For now, use some basic checks to determine if this looks like a valid response
-        
         const words = userResponse.split(/\s+/);
         const hasValidResponse = words.length >= 5; // Very basic check for minimum content
         
         if (hasValidResponse) {
           // Extract startup name and pitch using simple heuristics
-          // In practice, you'd want more sophisticated extraction
-          
-          // Store extracted information (this simplified version just stores the response)
-          // A more advanced implementation would use NLP to extract these properly
           responseData.startup_name = userResponse.split(/[.!?]/)[0].trim();
           responseData.startup_pitch = userResponse;
           
@@ -461,6 +454,9 @@ const welcomingFunction = new GameFunction({
       } else {
         responseData.message = `I need a bit more information to properly evaluate your startup. Could you please provide your startup's name and a brief 1-2 sentence description of what you're building?`;
       }
+      
+      // Ensure welcomeMsg is defined before use:
+      const welcomeMsg = responseData.message;
       
       return new ExecutableGameFunctionResponse(
         ExecutableGameFunctionStatus.Done,
