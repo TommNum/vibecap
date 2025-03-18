@@ -55,6 +55,7 @@ const agentState = {
         appId: string;
         userId: string;
         telegramId: string;
+        telegramUsername: string;
         startupName: string;
         startupPitch: string;
         startupLinks: string[];
@@ -85,13 +86,14 @@ const agentState = {
 };
 
 // Initialize chat data structure
-const initChatData = (chatId: string, userId: string) => {
+const initChatData = (chatId: string, userId: string, username?: string) => {
     if (!agentState.activeChats[chatId]) {
         const appId = `VC-${Date.now().toString(36)}-${Math.random().toString(36).substr(2, 5)}`.toUpperCase();
         agentState.activeChats[chatId] = {
             appId,
             userId,
             telegramId: userId,
+            telegramUsername: username || "",
             startupName: '',
             startupPitch: '',
             startupLinks: [],
@@ -353,12 +355,13 @@ const receiveMessageFunction = new GameFunction({
     args: [
         { name: "chatId", description: "The chat ID where the message was received" },
         { name: "userId", description: "The user ID who sent the message" },
+        { name: "username", description: "The Telegram username of the sender" },
         { name: "message", description: "The message content received from the user" }
     ] as const,
 
     executable: async (args, logger) => {
         try {
-            const { chatId, userId, message } = args;
+            const { chatId, userId, username, message } = args;
 
             if (!chatId || !userId) {
                 return new ExecutableGameFunctionResponse(
@@ -372,7 +375,7 @@ const receiveMessageFunction = new GameFunction({
                 logger(`Received /start command in chat ${chatId}, resetting conversation`);
                 
                 // Initialize or get chat data
-                const chatData = initChatData(chatId as string, userId as string);
+                const chatData = initChatData(chatId as string, userId as string, username as string);
                 
                 // Reset conversation to welcome state
                 chatData.conversationStage = 'welcome';
@@ -403,6 +406,11 @@ const receiveMessageFunction = new GameFunction({
                     agentState.processingQueue.unshift(chatId as string);
                 }
                 
+                // Store the username handle
+                if (username) {
+                    chatData.telegramUsername = username as string;
+                }
+                
                 return new ExecutableGameFunctionResponse(
                     ExecutableGameFunctionStatus.Done, 
                     JSON.stringify({
@@ -414,7 +422,12 @@ const receiveMessageFunction = new GameFunction({
             }
 
             // Initialize or get chat data
-            const chatData = initChatData(chatId as string, userId as string);
+            const chatData = initChatData(chatId as string, userId as string, username as string);
+            
+            // Ensure username is updated even for existing chats
+            if (username) {
+                chatData.telegramUsername = username as string;
+            }
 
             // Update activity timestamp
             chatData.lastActivity = Date.now();
@@ -903,7 +916,7 @@ const processConversationFunction = new GameFunction({
 
                 default:
                     // Reset to welcome for any unexpected stage
-                    responseMsg = "Hi! I am Wendy, your Associate at Vibe Capital. I'd like to learn about your startup to evaluate its potential. Could you start by telling me what your startup does in 1-2 sentences?";
+                    responseMsg = "Hi! I am Wendy, your Associate at Vibe Capital. I'd like to learn about your startup to evaluate its potential. Are you interested in pitching your startup?";
                     chatData.conversationStage = 'welcome';
             }
 
@@ -925,6 +938,7 @@ const processConversationFunction = new GameFunction({
                 app_id: chatData.appId,
                 user_id: chatData.userId,
                 telegram_id: chatData.telegramId,
+                telegram_username: chatData.telegramUsername,
                 startup_name: chatData.startupName,
                 startup_pitch: chatData.startupPitch,
                 startup_links: chatData.startupLinks,
@@ -1249,6 +1263,7 @@ export const handleTelegramUpdate = (update: any) => {
     if (update.message && update.message.text) {
         const chatId = update.message.chat.id.toString();
         const userId = update.message.from.id.toString();
+        const username = update.message.from.username || "";
         const messageText = update.message.text;
 
         // Special handling for /start command to ensure immediate response
@@ -1260,7 +1275,10 @@ export const handleTelegramUpdate = (update: any) => {
             }, (msg) => console.log(`[send_chat_action] ${msg}`));
             
             // Initialize chat data
-            const chatData = initChatData(chatId, userId);
+            const chatData = initChatData(chatId, userId, username);
+            
+            // Set the username
+            chatData.telegramUsername = username;
             
             // Reset conversation state
             chatData.conversationStage = 'welcome';
@@ -1296,6 +1314,7 @@ export const handleTelegramUpdate = (update: any) => {
         receiveMessageFunction.executable({
             chatId: chatId,
             userId: userId,
+            username: username,
             message: messageText
         }, (msg) => console.log(`[receive_message] ${msg}`));
     }
@@ -1362,15 +1381,17 @@ export function startTelegramPolling(botToken: string, interval = 3000) {
                 if (update.message && update.message.text) {
                     console.log(`Received message: ${update.message.text.substring(0, 50)}...`);
 
-                    // Process the message with our function (no need to create new agent instance)
+                    // Process the message with our function
                     const chatId = update.message.chat.id.toString();
                     const userId = update.message.from.id.toString();
+                    const username = update.message.from.username || "";
                     const messageText = update.message.text;
 
                     // Process directly with our function
                     await receiveMessageFunction.executable({
                         chatId: chatId,
                         userId: userId,
+                        username: username,
                         message: messageText
                     }, (msg) => console.log(`[receive_message] ${msg}`));
                 }
