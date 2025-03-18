@@ -188,6 +188,13 @@ const sendTelegramMessage = async (chatId: string, text: string): Promise<boolea
     const chatData = agentState.activeChats[chatId];
     if (!chatData) return false;
 
+    // Ensure we have text to send - prevent object passing
+    if (!text || text === "[object Object]" || text.startsWith("[object")) {
+        console.error(`Invalid message text detected for chat ${chatId}: ${text}`);
+        // Generate a simple valid message instead
+        text = "I'd like to hear more about your startup. Could you share more details?";
+    }
+
     // Check if this is a duplicate message (sent within the last 30 seconds)
     const messageHash = `${chatId}:${text}`;
     const recentMessage = recentMessages.get(messageHash);
