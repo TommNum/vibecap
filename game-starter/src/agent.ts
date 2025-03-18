@@ -368,7 +368,7 @@ const receiveMessageFunction = new GameFunction({
                     if (messageAnalysisResponse.status === ExecutableGameFunctionStatus.Done) {
                         try {
                             // Properly parse the JSON response
-                            const analysisResult = JSON.parse(messageAnalysisResponse.toString());
+                            const analysisResult = JSON.parse(messageAnalysisResponse.feedback);
                             
                             // Check if it's a data privacy question
                             if (analysisResult.is_data_privacy) {
@@ -488,8 +488,9 @@ const processConversationFunction = new GameFunction({
                     
                     if (welcomeResponse.status === ExecutableGameFunctionStatus.Done) {
                         try {
-                            // Get the welcome message directly as a string, no parsing needed
-                            const welcomeMsg = welcomeResponse.toString();
+                            // No JSON parsing - just get the message directly from the feedback property
+                            // The agent will generate the final response text based on its system prompt
+                            const welcomeMsg = welcomeResponse.feedback;
                             
                             // Add to conversation history
                             chatData.conversationHistory.push({
@@ -576,7 +577,7 @@ const processConversationFunction = new GameFunction({
                     }, (msg) => logger(`[generate_nudge] ${msg}`));
                     
                     if (nudgeResponse.status === ExecutableGameFunctionStatus.Done) {
-                        const nudgeData = JSON.parse(nudgeResponse.toString());
+                        const nudgeData = JSON.parse(nudgeResponse.feedback);
                         
                         // Increment nudge count
                         chatData.nudgeCount++;
@@ -627,7 +628,7 @@ const processConversationFunction = new GameFunction({
                     if (closedResponse.status === ExecutableGameFunctionStatus.Done) {
                         try {
                             // Get the message directly as a string, no parsing needed
-                            const closedMsg = closedResponse.toString();
+                            const closedMsg = closedResponse.feedback;
                             
                             // Send the message directly
                             await sendTelegramMessage(chatId as string, closedMsg);
@@ -661,7 +662,7 @@ const processConversationFunction = new GameFunction({
                         
                         if (errorRecoveryResponse.status === ExecutableGameFunctionStatus.Done) {
                             // Get the message directly as a string, no parsing needed
-                            const recoveryMsg = errorRecoveryResponse.toString();
+                            const recoveryMsg = errorRecoveryResponse.feedback;
                             
                             // Add to conversation history
                             chatData.conversationHistory.push({
@@ -714,7 +715,7 @@ const processConversationFunction = new GameFunction({
                         
                         if (askNameResponse.status === ExecutableGameFunctionStatus.Done) {
                             // Get the message directly as a string, no parsing needed
-                            responseMsg = askNameResponse.toString();
+                            responseMsg = askNameResponse.feedback;
                         }
                         
                         chatData.conversationStage = 'startup_name';
@@ -733,7 +734,7 @@ const processConversationFunction = new GameFunction({
                         
                         if (askLinksResponse.status === ExecutableGameFunctionStatus.Done) {
                             // Get the message directly as a string, no parsing needed
-                            responseMsg = askLinksResponse.toString();
+                            responseMsg = askLinksResponse.feedback;
                         }
                         
                         chatData.conversationStage = 'links';
@@ -758,7 +759,7 @@ const processConversationFunction = new GameFunction({
                         
                         if (firstQuestionResponse.status === ExecutableGameFunctionStatus.Done) {
                             // Get the message directly as a string, no parsing needed
-                            responseMsg = firstQuestionResponse.toString();
+                            responseMsg = firstQuestionResponse.feedback;
                         }
                         
                         chatData.questionCount++;
@@ -799,7 +800,7 @@ const processConversationFunction = new GameFunction({
                             
                             if (closingResponse.status === ExecutableGameFunctionStatus.Done) {
                                 // Get the message directly as a string, no parsing needed
-                                responseMsg = closingResponse.toString();
+                                responseMsg = closingResponse.feedback;
                             }
 
                             chatData.isClosed = true;
@@ -831,7 +832,7 @@ const processConversationFunction = new GameFunction({
 
                             if (nextQuestionResponse.status === ExecutableGameFunctionStatus.Done) {
                                 // Get the message directly as a string, no parsing needed
-                                responseMsg = nextQuestionResponse.toString();
+                                responseMsg = nextQuestionResponse.feedback;
                             }
 
                             chatData.questionCount++;
@@ -848,7 +849,7 @@ const processConversationFunction = new GameFunction({
                         
                         if (resetWelcomeResponse.status === ExecutableGameFunctionStatus.Done) {
                             // Get the message directly as a string, no parsing needed
-                            responseMsg = resetWelcomeResponse.toString();
+                            responseMsg = resetWelcomeResponse.feedback;
                         }
                         
                         chatData.conversationStage = 'welcome';
@@ -906,7 +907,7 @@ const processConversationFunction = new GameFunction({
                     
                     if (errorRecoveryResponse.status === ExecutableGameFunctionStatus.Done) {
                         // Get the message directly as a string, no parsing needed
-                        const recoveryMsg = errorRecoveryResponse.toString();
+                        const recoveryMsg = errorRecoveryResponse.feedback;
                         
                         // Add to conversation history
                         chatData.conversationHistory.push({
@@ -1000,7 +1001,7 @@ const processInactiveChatFunction = new GameFunction({
                     }, (msg) => logger(`[generate_nudge] ${msg}`));
                     
                     if (nudgeResponse.status === ExecutableGameFunctionStatus.Done) {
-                        const nudgeData = JSON.parse(nudgeResponse.toString());
+                        const nudgeData = JSON.parse(nudgeResponse.feedback);
                         
                         // Increment nudge count
                         chatData.nudgeCount++;
@@ -1046,7 +1047,7 @@ const processInactiveChatFunction = new GameFunction({
                         
                         if (errorRecoveryResponse.status === ExecutableGameFunctionStatus.Done) {
                             // Get the message directly as a string, no parsing needed
-                            const recoveryMsg = errorRecoveryResponse.toString();
+                            const recoveryMsg = errorRecoveryResponse.feedback;
                             
                             // Increment nudge count
                             chatData.nudgeCount++;
