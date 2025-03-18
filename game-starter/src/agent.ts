@@ -641,13 +641,25 @@ const processConversationFunction = new GameFunction({
                         }, (msg) => logger(`[error_recovery] ${msg}`));
                         
                         if (errorRecoveryResponse.status === ExecutableGameFunctionStatus.Done) {
-                            const recoveryData = JSON.parse(errorRecoveryResponse.toString());
+                            // Get the message directly as a string, no parsing needed
+                            const recoveryMsg = errorRecoveryResponse.toString();
+                            
+                            // Add to conversation history
+                            chatData.conversationHistory.push({
+                                role: "assistant",
+                                content: recoveryMsg,
+                                timestamp: Date.now()
+                            });
                             
                             // Send recovery message
-                            await sendTelegramMessage(chatId as string, recoveryData.message);
+                            await sendTelegramMessage(chatId as string, recoveryMsg);
                         }
                     } catch (recoveryError) {
                         logger(`Error in recovery function: ${recoveryError}`);
+                        
+                        // Direct fallback in case of critical error
+                        const absoluteFallbackMsg = "I apologize for the technical difficulty. Let's continue another time. Your conversation has been closed.";
+                        await sendTelegramMessage(chatId as string, absoluteFallbackMsg);
                     }
                     
                     // Remove from processing queue regardless
@@ -873,20 +885,25 @@ const processConversationFunction = new GameFunction({
                     }, (msg) => logger(`[error_recovery] ${msg}`));
                     
                     if (errorRecoveryResponse.status === ExecutableGameFunctionStatus.Done) {
-                        const recoveryData = JSON.parse(errorRecoveryResponse.toString());
+                        // Get the message directly as a string, no parsing needed
+                        const recoveryMsg = errorRecoveryResponse.toString();
                         
                         // Add to conversation history
                         chatData.conversationHistory.push({
                             role: "assistant",
-                            content: recoveryData.message,
+                            content: recoveryMsg,
                             timestamp: Date.now()
                         });
                         
                         // Send recovery message
-                        await sendTelegramMessage(chatId as string, recoveryData.message);
+                        await sendTelegramMessage(chatId as string, recoveryMsg);
                     }
                 } catch (recoveryError) {
                     logger(`Error in recovery function: ${recoveryError}`);
+                    
+                    // Direct fallback in case of critical error
+                    const absoluteFallbackMsg = "I apologize for the technical difficulty. Let's try again. Could you tell me about your startup?";
+                    await sendTelegramMessage(chatId as string, absoluteFallbackMsg);
                 }
                 
                 // Remove from processing queue regardless
@@ -1007,7 +1024,8 @@ const processInactiveChatFunction = new GameFunction({
                         }, (msg) => logger(`[error_recovery] ${msg}`));
                         
                         if (errorRecoveryResponse.status === ExecutableGameFunctionStatus.Done) {
-                            const recoveryData = JSON.parse(errorRecoveryResponse.toString());
+                            // Get the message directly as a string, no parsing needed
+                            const recoveryMsg = errorRecoveryResponse.toString();
                             
                             // Increment nudge count
                             chatData.nudgeCount++;
@@ -1020,15 +1038,22 @@ const processInactiveChatFunction = new GameFunction({
                             // Add to conversation history
                             chatData.conversationHistory.push({
                                 role: "assistant",
-                                content: recoveryData.message,
+                                content: recoveryMsg,
                                 timestamp: Date.now()
                             });
                             
                             // Send recovery message
-                            await sendTelegramMessage(chatId as string, recoveryData.message);
+                            await sendTelegramMessage(chatId as string, recoveryMsg);
                         }
                     } catch (recoveryError) {
                         logger(`Error in recovery function: ${recoveryError}`);
+                        
+                        // Direct fallback in case of critical error
+                        const nudgeMsg = `Hi there! I noticed you haven't responded in a while. Are you still interested in discussing your startup?`;
+                        await sendTelegramMessage(chatId as string, nudgeMsg);
+                        
+                        // Increment nudge count anyway
+                        chatData.nudgeCount++;
                     }
                     
                     // Remove from processing queue regardless
