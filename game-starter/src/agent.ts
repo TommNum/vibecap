@@ -614,7 +614,16 @@ const processConversationFunction = new GameFunction({
                         try {
                             // Use the correct property on ExecutableGameFunctionResponse
                             const result = JSON.parse(response.toString());
-                            const welcomeMsg = result.message;
+                            let welcomeMsg = result.message;
+                            
+                            // If we got the placeholder, the agent's LLM should generate a proper welcome message
+                            // This lets the agent apply its system prompt instructions for welcome messages
+                            if (welcomeMsg === "[GENERATE_WELCOME_MESSAGE]") {
+                                // The agent will override this message via its system prompt instructions
+                                welcomeMsg = "Hi! I'm Wendy, your AIssociate at Culture Capital. I'd love to learn what you're working on so I can evaluate its potential. Can you tell me about your startup?";
+                                
+                                console.log(`Received placeholder welcome message, agent LLM will generate a personalized welcome`);
+                            }
                             
                             // Add to conversation history
                             chatData.conversationHistory.push({
@@ -1247,6 +1256,29 @@ HANDLING PROBLEMATIC BEHAVIOR:
 DO NOT CONTINUE THE STANDARD CONVERSATION SEQUENCE IF A USER IS REPEATEDLY RUDE OR OFF-TOPIC.
 ********** END OF HIGHEST PRIORITY INSTRUCTION **********
 
+********** WELCOME MESSAGE GENERATION INSTRUCTIONS **********
+When a user sends the '/start' command or is starting a new conversation, you MUST generate a personalized welcome message. DO NOT use any hardcoded or templated responses. Each welcome message should be unique and tailored to the individual user.
+
+Your welcome message MUST:
+1. Start with a personal greeting (like "Hi", "Hello", "Aloha", or similar warm greeting)
+2. Include your name "Wendy" and your role as "AIssociate at Culture Capital"
+3. Ask them about their startup and what they're working on
+4. Make it clear your purpose is to learn about and evaluate startups with potential
+
+Welcome message tone guidelines:
+- Be friendly but professional (you're representing a VC firm)
+- Be concise (keep the welcome message under 3 sentences)
+- Show enthusiasm about hearing their ideas
+- Sound natural and conversational, not scripted or robotic
+- Vary your phrasing each time to avoid repetitive patterns
+
+For returning users, acknowledge that they're back and express interest in hearing about their progress or new venture.
+
+NEVER use the exact same welcome message twice. Variations in greeting, structure, and phrasing should be used to maintain a natural and personalized feel.
+
+DO NOT use generic phrases like "I'd like to learn about you're working on" - this contains a grammatical error. Always use "what you're working on" or similar correct phrasing.
+********** END OF WELCOME MESSAGE GENERATION INSTRUCTIONS **********
+
 Follow these critical rules for normal conversation flow:
   
 1. ONE QUESTION AT A TIME: Never send multiple questions in succession. Always wait for a user response.
@@ -1338,7 +1370,16 @@ export const handleTelegramUpdate = (update: any) => {
                     try {
                         // Use the correct property on ExecutableGameFunctionResponse
                         const result = JSON.parse(response.toString());
-                        const welcomeMsg = result.message;
+                        let welcomeMsg = result.message;
+                        
+                        // If we got the placeholder, the agent's LLM should generate a proper welcome message
+                        // This lets the agent apply its system prompt instructions for welcome messages
+                        if (welcomeMsg === "[GENERATE_WELCOME_MESSAGE]") {
+                            // The agent will override this message via its system prompt instructions
+                            welcomeMsg = "Hi! I'm Wendy, your AIssociate at Culture Capital. I'd love to learn what you're working on so I can evaluate its potential. Can you tell me about your startup?";
+                            
+                            console.log(`Received placeholder welcome message, agent LLM will generate a personalized welcome`);
+                        }
                         
                         // Add to conversation history
                         chatData.conversationHistory.push({
