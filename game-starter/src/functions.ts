@@ -211,17 +211,17 @@ const processUserMessageFunction = new GameFunction({
   ] as const,
   executable: async (args, logger) => {
     try {
-      // Add default empty string to message parameter
       const { message = "", conversation_stage, previous_warnings } = args;
       
       logger(`Analyzing user message at ${conversation_stage} stage`);
       
-      // Check for data privacy related questions with more comprehensive patterns
+      // Improved data privacy detection with more variations
       const lowerMessage = message.toLowerCase();
       const isDataPrivacy = 
         lowerMessage.includes("data privacy") || 
         lowerMessage.includes("protect my data") ||
         lowerMessage.includes("what will you do with my data") ||
+        lowerMessage.includes("what do you do with my data") ||
         lowerMessage.includes("how do you use my data") ||
         lowerMessage.includes("data security") ||
         lowerMessage.includes("information security") ||
@@ -230,13 +230,39 @@ const processUserMessageFunction = new GameFunction({
         lowerMessage.includes("privacy policy") ||
         lowerMessage.includes("share my data") ||
         lowerMessage.includes("data stored") ||
+        (lowerMessage.includes("my data") && (
+          lowerMessage.includes("what") || 
+          lowerMessage.includes("how") ||
+          lowerMessage.includes("asking about") || 
+          lowerMessage.includes("question about")
+        )) ||
         (lowerMessage.includes("privacy") && lowerMessage.includes("data"));
       
-      // Return a simple string result instead of JSON
-      return new ExecutableGameFunctionResponse(
-        ExecutableGameFunctionStatus.Done,
-        isDataPrivacy ? "DATA_PRIVACY_QUESTION" : "NORMAL_MESSAGE"
-      );
+      // Also detect if user is asking a direct question about the process
+      const isDirectQuestion = 
+        (lowerMessage.startsWith("what") || 
+         lowerMessage.startsWith("how") || 
+         lowerMessage.startsWith("why") ||
+         lowerMessage.includes("?")) &&
+        !isDataPrivacy; // Don't double-count data privacy questions
+      
+      // Return appropriate analysis result
+      if (isDataPrivacy) {
+        return new ExecutableGameFunctionResponse(
+          ExecutableGameFunctionStatus.Done,
+          "DATA_PRIVACY_QUESTION"
+        );
+      } else if (isDirectQuestion) {
+        return new ExecutableGameFunctionResponse(
+          ExecutableGameFunctionStatus.Done,
+          "DIRECT_QUESTION"
+        );
+      } else {
+        return new ExecutableGameFunctionResponse(
+          ExecutableGameFunctionStatus.Done,
+          "NORMAL_MESSAGE"
+        );
+      }
     } catch (e) {
       const errorMessage = e instanceof Error ? e.message : 'Unknown error';
       return new ExecutableGameFunctionResponse(

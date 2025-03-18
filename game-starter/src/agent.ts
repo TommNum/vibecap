@@ -393,6 +393,27 @@ const receiveMessageFunction = new GameFunction({
                                     privacy: true
                                 })
                             );
+                        } else if (messageAnalysisResponse.feedback === "DIRECT_QUESTION") {
+                            logger(`Detected direct process question in chat ${chatId}`);
+                            
+                            // Add to processing queue with high priority for immediate agent response
+                            if (agentState.processingQueue.includes(chatId as string)) {
+                                // Remove from current position
+                                agentState.processingQueue = agentState.processingQueue.filter(id => id !== chatId);
+                            }
+                            
+                            // Add to front of queue for immediate processing
+                            agentState.processingQueue.unshift(chatId as string);
+                            
+                            return new ExecutableGameFunctionResponse(
+                                ExecutableGameFunctionStatus.Done,
+                                JSON.stringify({
+                                    chatId,
+                                    message: message || '',
+                                    priority: "high",
+                                    queuePosition: 1
+                                })
+                            );
                         }
                     }
                 } catch (error) {
