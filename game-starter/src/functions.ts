@@ -30,11 +30,13 @@ const welcomingFunction = new GameFunction({
       
       logger(`Generating welcome message for ${isReturning ? "returning" : "new"} user${username ? ` with username ${username}` : ""}`);
       
-      // Return a simple, direct message instead of a placeholder
+      // Create a personalized welcome message
+      const welcomeMsg = `Hi${username ? ` ${username}` : ""}! I'm Wendy, your AIssociate at Culture Capital. I'd love to learn what you're working on so I can evaluate its potential. Can you tell me about your startup?`;
+      
+      // Return a plain string - this is the key change
       return new ExecutableGameFunctionResponse(
         ExecutableGameFunctionStatus.Done,
-        // Just return a direct string with a personalized greeting
-        `Hi${username ? ` ${username}` : ""}! I'm Wendy, your AIssociate at Culture Capital. I'd love to learn what you're working on so I can evaluate its potential. Can you tell me about your startup?`
+        welcomeMsg
       );
     } catch (e) {
       const errorMessage = e instanceof Error ? e.message : 'Unknown error';
