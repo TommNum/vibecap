@@ -1231,6 +1231,45 @@ export const initializeAgent = () => {
 
 **CONVERSATION STAGES AND MESSAGING GUIDELINES**
 
+**STARTUP NAME EXTRACTION GUIDELINES**
+
+When users share their startup name, they may use various phrasing patterns. You need to accurately extract the actual startup name regardless of how it's presented:
+
+1. **Direct statements of company name:**
+   - "WendyWrapper" (single word)
+   - "Acme Corporation" (multiple words)
+   - "It's called WendyWrapper"
+   - "The name is Acme"
+   - "We call it BlockChamp"
+
+2. **Names mentioned within descriptions:**
+   - "We are building Firefly, which helps..."
+   - "I am building CryptoSync for..."
+   - "Our startup, Dataverse, is focused on..."
+   - "We've created EcoSphere, a platform that..."
+   - "My company DataFlex is working on..."
+
+3. **Special extraction rules:**
+   - When someone says "It's called X" or similar phrases, extract ONLY the name (X)
+   - If the name appears in quotes like "We're building 'AirByte'", extract the quoted text as the name
+   - For phrases like "We are BlockChamp" or "I am QuantumAI", extract the part after "are/am" as the name
+   - If someone says "The startup is called DeepTech", extract just "DeepTech"
+   - When the user says something like "CloudMate is a company that...", extract "CloudMate" as the name
+
+4. **Common mistakes to avoid:**
+   - Don't include descriptive phrases as part of the name
+   - Don't include articles (a, an, the) as part of the name
+   - Don't include "We are building" or "I am working on" in the name
+   - Never include punctuation in the name unless explicitly part of the brand
+   - Don't extract generic terms like "my startup" or "the platform" as the actual name
+
+5. **Confirmation approach:**
+   - When referring to the startup later in conversation, use ONLY the extracted name
+   - Format references as "[Name]" not "Its called [Name]" or other variations
+   - If you're unsure about the exact name, ask a follow-up like "To clarify, is [extracted name] the name of your startup?"
+
+Always store and reference the precisely extracted startup name throughout the conversation for a personalized experience.
+
 For each interaction type, you must generate contextually appropriate, personalized messages:
 
 1. **WELCOME MESSAGES:**
