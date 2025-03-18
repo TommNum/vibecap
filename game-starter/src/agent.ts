@@ -489,68 +489,51 @@ const processConversationFunction = new GameFunction({
                     }, (msg) => logger(`[welcome_function] ${msg}`));
                     
                     if (welcomeResponse.status === ExecutableGameFunctionStatus.Done) {
-                        const responseData = JSON.parse(welcomeResponse.toString());
+                        // Get the welcome message directly from the response
+                        // No parsing needed - just get the string message
+                        const welcomeMsg = welcomeResponse.toString();
                         
                         // Add to conversation history
                         chatData.conversationHistory.push({
                             role: "assistant",
-                            content: responseData.message,
+                            content: welcomeMsg,
                             timestamp: Date.now()
                         });
                         
                         // Send welcome message immediately
-                        await sendTelegramMessage(chatId as string, responseData.message);
-                        
-                        // Remove from processing queue
-                        agentState.processingQueue = agentState.processingQueue.filter(id => id !== chatId);
-                        
-                        return new ExecutableGameFunctionResponse(
-                            ExecutableGameFunctionStatus.Done,
-                            JSON.stringify({
-                                chatId,
-                                message: "Welcome message sent",
-                                stage: "welcome"
-                            })
-                        );
+                        await sendTelegramMessage(chatId as string, welcomeMsg);
                     }
                 } catch (error) {
                     logger(`Error generating welcome message: ${error}`);
                     
-                    // Use error recovery function
-                    try {
-                        const errorRecoveryResponse = await errorRecoveryFunction.executable({
-                            startup_name: "",
-                            conversation_stage: "welcome",
-                            error_type: "welcome_generation"
-                        }, (msg) => logger(`[error_recovery] ${msg}`));
-                        
-                        if (errorRecoveryResponse.status === ExecutableGameFunctionStatus.Done) {
-                            const recoveryData = JSON.parse(errorRecoveryResponse.toString());
-                            
-                            // Add to conversation history
-                            chatData.conversationHistory.push({
-                                role: "assistant",
-                                content: recoveryData.message,
-                                timestamp: Date.now()
-                            });
-                            
-                            // Send recovery message
-                            await sendTelegramMessage(chatId as string, recoveryData.message);
-                        }
-                    } catch (recoveryError) {
-                        logger(`Error in recovery function: ${recoveryError}`);
-                    }
+                    // Fallback to a simple, reliable welcome message
+                    const fallbackMsg = `Hi! I'm Wendy from Culture Capital. I'd love to learn about your startup. What are you working on?`;
                     
-                    // Remove from processing queue regardless
-                    agentState.processingQueue = agentState.processingQueue.filter(id => id !== chatId);
+                    // Add to conversation history
+                    chatData.conversationHistory.push({
+                        role: "user",
+                        content: "/start",
+                        timestamp: Date.now()
+                    });
+                    
+                    chatData.conversationHistory.push({
+                        role: "assistant",
+                        content: fallbackMsg,
+                        timestamp: Date.now()
+                    });
+                    
+                    // Send welcome message immediately
+                    await sendTelegramMessage(chatId as string, fallbackMsg);
                 }
                 
-                // Return after handling /start command
+                // Remove from processing queue
+                agentState.processingQueue = agentState.processingQueue.filter(id => id !== chatId);
+                
                 return new ExecutableGameFunctionResponse(
                     ExecutableGameFunctionStatus.Done,
                     JSON.stringify({
                         chatId,
-                        message: "Welcome message processing completed",
+                        message: "Welcome message sent",
                         stage: "welcome"
                     })
                 );
