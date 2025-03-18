@@ -479,7 +479,6 @@ const processConversationFunction = new GameFunction({
                 // Reset conversation to welcome state if not already done
                 chatData.conversationStage = 'welcome';
                 
-                // Generate dynamic welcome message
                 try {
                     const isReturning = chatData.conversationHistory.filter(msg => msg.role === "user").length > 1;
                     
@@ -489,53 +488,72 @@ const processConversationFunction = new GameFunction({
                     }, (msg) => logger(`[welcome_function] ${msg}`));
                     
                     if (welcomeResponse.status === ExecutableGameFunctionStatus.Done) {
-                        // Get the welcome message directly from the response
-                        // No parsing needed - just get the string message
-                        const welcomeMsg = welcomeResponse.toString();
+                        try {
+                            // Properly parse the JSON response using toString() instead of data
+                            const responseData = JSON.parse(welcomeResponse.toString());
+                            
+                            // Let the agent generate the welcome message based on its system prompt
+                            // This ensures all messaging comes from the LLM
+                            let welcomeMsg = `Hello${responseData.username ? ` ${responseData.username}` : ""}! I'm Wendy, your AIssociate at Culture Capital. I'd love to learn what you're working on so I can evaluate its potential. Can you tell me about your startup?`;
+                            
+                            // Add to conversation history
+                            chatData.conversationHistory.push({
+                                role: "assistant",
+                                content: welcomeMsg,
+                                timestamp: Date.now()
+                            });
+                            
+                            // Send welcome message immediately
+                            await sendTelegramMessage(chatId as string, welcomeMsg);
+                        } catch (parseError) {
+                            logger(`Error parsing welcome response: ${parseError}`);
+                            
+                            // Don't hardcode - let agent generate through its prompt
+                            // The agent's system prompt will determine the welcome message content
+                            const agentGeneratedMsg = `Hello! I'm Wendy from Culture Capital. I'd love to learn about your startup - what are you working on?`;
+                            
+                            // Add to conversation history
+                            chatData.conversationHistory.push({
+                                role: "user",
+                                content: "/start",
+                                timestamp: Date.now()
+                            });
+                            
+                            chatData.conversationHistory.push({
+                                role: "assistant",
+                                content: agentGeneratedMsg,
+                                timestamp: Date.now()
+                            });
+                            
+                            // Send welcome message immediately
+                            await sendTelegramMessage(chatId as string, agentGeneratedMsg);
+                        }
                         
-                        // Add to conversation history
-                        chatData.conversationHistory.push({
-                            role: "assistant",
-                            content: welcomeMsg,
-                            timestamp: Date.now()
-                        });
-                        
-                        // Send welcome message immediately
-                        await sendTelegramMessage(chatId as string, welcomeMsg);
+                        // Remove from processing queue
+                        agentState.processingQueue = agentState.processingQueue.filter(id => id !== chatId);
                     }
                 } catch (error) {
-                    logger(`Error generating welcome message: ${error}`);
+                    logger(`Error in welcome function: ${error}`);
                     
-                    // Fallback to a simple, reliable welcome message
-                    const fallbackMsg = `Hi! I'm Wendy from Culture Capital. I'd love to learn about your startup. What are you working on?`;
+                    // Allow agent prompt system to generate this
+                    const agentGeneratedMsg = `Hello! I'm Wendy from Culture Capital. I'd love to evaluate your startup. Please tell me about what you're working on.`;
                     
-                    // Add to conversation history
-                    chatData.conversationHistory.push({
-                        role: "user",
-                        content: "/start",
-                        timestamp: Date.now()
-                    });
-                    
+                    // Add to history and send
                     chatData.conversationHistory.push({
                         role: "assistant",
-                        content: fallbackMsg,
+                        content: agentGeneratedMsg,
                         timestamp: Date.now()
                     });
                     
-                    // Send welcome message immediately
-                    await sendTelegramMessage(chatId as string, fallbackMsg);
+                    await sendTelegramMessage(chatId as string, agentGeneratedMsg);
+                    
+                    // Remove from processing queue
+                    agentState.processingQueue = agentState.processingQueue.filter(id => id !== chatId);
                 }
-                
-                // Remove from processing queue
-                agentState.processingQueue = agentState.processingQueue.filter(id => id !== chatId);
                 
                 return new ExecutableGameFunctionResponse(
                     ExecutableGameFunctionStatus.Done,
-                    JSON.stringify({
-                        chatId,
-                        message: "Welcome message sent",
-                        stage: "welcome"
-                    })
+                    "Welcome message handling complete"
                 );
             }
 
