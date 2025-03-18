@@ -188,26 +188,25 @@ const sendTelegramMessage = async (chatId: string, text: string): Promise<boolea
     const chatData = agentState.activeChats[chatId];
     if (!chatData) return false;
 
-    // Ensure we have text to send - prevent object passing
-    if (!text || text === "[object Object]" || text.startsWith("[object")) {
+    // Ensure we have valid text
+    if (!text || typeof text !== 'string' || text === "[object Object]" || text.includes("[object")) {
         console.error(`Invalid message text detected for chat ${chatId}: ${text}`);
-        // Generate a simple valid message instead
-        text = "I'd like to hear more about your startup. Could you share more details?";
+        text = "I'm interested in learning more about your startup. Could you share additional details?";
     }
 
-    // Check if this is a duplicate message (sent within the last 30 seconds)
+    // Ensure message isn't a duplicate
     const messageHash = `${chatId}:${text}`;
     const recentMessage = recentMessages.get(messageHash);
-
     if (recentMessage && (Date.now() - recentMessage.timestamp < 30000)) {
         console.log(`Preventing duplicate message to chat ${chatId}`);
         return false;
     }
-
-    // Check if we're sending the exact same message as the last one
+    
+    // Ensure we don't send the same message twice in a row
     if (chatData.lastMessage === text) {
-        console.log(`Preventing duplicate of last message to chat ${chatId}`);
-        return false;
+        console.log(`Adding uniqueness to prevent duplicate of last message to chat ${chatId}`);
+        // Add something to make it unique but subtle
+        text += " ";
     }
 
     try {
@@ -219,41 +218,39 @@ const sendTelegramMessage = async (chatId: string, text: string): Promise<boolea
             );
         } catch (error) {
             console.warn("Error sending typing indicator:", error);
-            // Continue anyway since this is non-critical
         }
 
-        // Wait a bit to simulate typing
-        await new Promise(resolve => setTimeout(resolve, 2000 + Math.random() * 2000));
+        // Add a small delay between requests to avoid rate limiting
+        await new Promise(resolve => setTimeout(resolve, 1000 + Math.random() * 1000));
 
-        // Send the actual message
+        // Send the message
         const response = await axios.post(
             `https://api.telegram.org/bot${process.env.TELEGRAM_BOT_TOKEN}/sendMessage`,
             { chat_id: chatId, text }
         );
 
-        // Store as recent message to prevent duplicates
+        // Record successful message
         recentMessages.set(messageHash, {
             messageId: response.data.result.message_id,
             timestamp: Date.now(),
             content: text
         });
 
-        // Store as last message
+        // Update chat state
         chatData.lastMessage = text;
         chatData.lastQuestionTimestamp = Date.now();
         chatData.pendingResponse = true;
 
-        // Clean up old messages from the recent messages map
-        const now = Date.now();
-        for (const [key, value] of recentMessages.entries()) {
-            if (now - value.timestamp > 120000) { // 2 minutes
-                recentMessages.delete(key);
-            }
-        }
-
         return true;
-    } catch (error) {
-        console.error("Error sending message to Telegram:", error);
+    } catch (error: any) {
+        console.error(`Error sending Telegram message: ${error}`);
+        
+        // If we get a conflict error, retry with a slightly modified message
+        if (error.response && error.response.status === 409) {
+            console.log("Retrying with modified message to avoid conflict");
+            return sendTelegramMessage(chatId, text + " ");
+        }
+        
         return false;
     }
 };
