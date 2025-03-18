@@ -431,36 +431,70 @@ const welcomingFunction = new GameFunction({
       // In a real implementation, this would be an API call to OpenAI, Anthropic, etc.
       // For this example, I'll simulate the response
       
-      // Simulated LLM-generated message based on the system prompt
-      // In a real implementation, this would come from the LLM API
-      
       // *******************************************
-      // In an actual implementation, you would:
-      // 1. Call your LLM API with the systemPrompt
-      // 2. Get the generated text response
-      // 3. Assign it to responseData.message
+      // REPLACE THIS SECTION WITH ACTUAL LLM CALL
       // *******************************************
       
-      // For demonstration purposes only - simulate different responses
-      // These would actually come from the LLM in a real implementation
-      if (conversationStage === "initial") {
-        responseData.message = username ?
-          `Aloha ${username}! I'm Wendy, your AIssociate at Culture Capital. Would you be interested in pitching your startup to me today? I'm here to learn about and evaluate ventures with potential.` :
-          `Hi there! I'm Wendy, an AIssociate working with Culture Capital. I'm looking for promising startups to evaluate - would you like to pitch yours to me today?`;
-      } else if (conversationStage === "awaiting_interest_confirmation") {
-        responseData.message = `Great! I'd love to hear about your venture. Could you please share your startup's name and give me a 1-2 sentence description of what you're building?`;
-      } else if (conversationStage === "collecting_details") {
-        // We need to determine if the response is valid here again
-        const words = userResponse.split(/\s+/);
-        const hasEnoughContent = words.length >= 5; // Very basic check for minimum content
+      // Import OpenAI at the top of the file if not already there
+      // import OpenAI from 'openai';
+      
+      // Create OpenAI client instance
+      const openai = new (require('openai')).OpenAI({
+        apiKey: process.env.API_KEY, // Using the same API key as the agent
+      });
+      
+      try {
+        // Log that we're making an API call
+        logger(`Calling LLM API with system prompt for ${conversationStage} stage`);
         
-        if (hasEnoughContent) {
-          responseData.message = `Thanks for sharing those details! I've noted them down. Now, I'd like to understand more about your target market - what specific problem are you solving, and how painful is this problem for your users?`;
+        // Make the actual API call to the LLM
+        const completion = await openai.chat.completions.create({
+          model: "Qwen2.5-72B-Instruct", // Using the same model as specified in the agent
+          messages: [
+            {
+              role: "system",
+              content: systemPrompt,
+            },
+            // Include any relevant conversation history if available
+            ...(userResponse ? [{ role: "user", content: userResponse }] : []),
+          ],
+          temperature: 0.7, // Balanced between creativity and consistency
+          max_tokens: 150,  // Keeping responses concise
+        });
+        
+        // Extract the generated response
+        const generatedMessage = completion.choices[0].message.content.trim();
+        logger(`LLM generated response: ${generatedMessage.substring(0, 50)}...`);
+        
+        // Set the generated message as the response
+        responseData.message = generatedMessage;
+      } catch (error) {
+        // Log the error
+        logger(`Error calling LLM API: ${error}`);
+        
+        // Fallback to hardcoded responses if API call fails
+        logger(`Using fallback response for ${conversationStage}`);
+        
+        // For fallback purposes only - use these if the API call fails
+        if (conversationStage === "initial") {
+          responseData.message = username ?
+            `Aloha ${username}! I'm Wendy, your AIssociate at Culture Capital. Would you be interested in pitching your startup to me today? I'm here to learn about and evaluate ventures with potential.` :
+            `Hi there! I'm Wendy, an AIssociate working with Culture Capital. I'm looking for promising startups to evaluate - would you like to pitch yours to me today?`;
+        } else if (conversationStage === "awaiting_interest_confirmation") {
+          responseData.message = `Great! I'd love to hear about your venture. Could you please share your startup's name and give me a 1-2 sentence description of what you're building?`;
+        } else if (conversationStage === "collecting_details") {
+          // We need to determine if the response is valid here again
+          const words = userResponse.split(/\s+/);
+          const hasEnoughContent = words.length >= 5; // Very basic check for minimum content
+          
+          if (hasEnoughContent) {
+            responseData.message = `Thanks for sharing those details! I've noted them down. Now, I'd like to understand more about your target market - what specific problem are you solving, and how painful is this problem for your users?`;
+          } else {
+            responseData.message = `I need a bit more information to properly evaluate your startup. Could you please provide your startup's name and a brief 1-2 sentence description of what you're building?`;
+          }
         } else {
           responseData.message = `I need a bit more information to properly evaluate your startup. Could you please provide your startup's name and a brief 1-2 sentence description of what you're building?`;
         }
-      } else {
-        responseData.message = `I need a bit more information to properly evaluate your startup. Could you please provide your startup's name and a brief 1-2 sentence description of what you're building?`;
       }
       
       // Ensure welcomeMsg is defined before use:
