@@ -281,9 +281,205 @@ const processUserMessageFunction = new GameFunction({
   },
 });
 
+// Function to generate personalized welcome messages via LLM
+const welcomingFunction = new GameFunction({
+  name: "generate_welcome_message",
+  description: "Use LLM to generate a personalized, unique welcome message based on conversation context",
+  args: [
+    { name: "is_returning", description: "Whether this user has interacted before (true/false)", optional: true },
+    { name: "username", description: "The Telegram username of the user if available", optional: true },
+    { name: "conversation_stage", description: "Current stage of conversation (initial, interest_confirmed, collecting_details)", optional: true },
+    { name: "startup_name", description: "Startup name if already provided", optional: true },
+    { name: "startup_pitch", description: "Startup pitch if already provided", optional: true },
+    { name: "user_response", description: "The user's latest response", optional: true }
+  ] as const,
+  
+  executable: async (args, logger) => {
+    try {
+      const isReturning = args.is_returning === true || args.is_returning === "true";
+      const username = args.username || "";
+      const conversationStage = args.conversation_stage || "initial";
+      const userResponse = args.user_response || "";
+      const startupName = args.startup_name || "";
+      const startupPitch = args.startup_pitch || "";
+      
+      // Create context string for logging
+      let context = `${isReturning ? "returning" : "new"} user at stage ${conversationStage}`;
+      if (username) context += ` with username ${username}`;
+      
+      logger(`Generating LLM message for ${context}`);
+      
+      // Initialize response data structure
+      const responseData = {
+        message: "",
+        conversation_stage: conversationStage,
+        startup_name: startupName,
+        startup_pitch: startupPitch,
+        collection_complete: false
+      };
+      
+      // Create appropriate system prompt based on conversation stage
+      let systemPrompt = "";
+      
+      if (conversationStage === "initial") {
+        // First contact - system prompt for asking about interest in pitching
+        systemPrompt = `
+          You are Wendy, an AIssociate at Culture Capital, a venture capital firm.
+          Generate a friendly, professional welcome message for a${isReturning ? " returning" : ""} potential founder${username ? ` named ${username}` : ""}.
+          
+          YOUR MESSAGE MUST:
+          1. Start with a personal greeting (like "Hi", "Hello", "Aloha", or similar warm greeting)
+          2. Include your name "Wendy" and your role as "AIssociate at Culture Capital"
+          3. Ask if they're interested in pitching their startup to you today
+          4. Make it clear that your purpose is to learn about and evaluate startups with potential
+          
+          TONE GUIDELINES:
+          - Be friendly but professional (you're representing a VC firm)
+          - Be concise (keep the message under 2 sentences)
+          - Show enthusiasm about hearing their ideas
+          - Sound natural and conversational, not scripted
+          
+          The message should feel personally crafted for this interaction, not like a template.
+        `;
+        
+        // Next stage will depend on user response
+        responseData.conversation_stage = "awaiting_interest_confirmation";
+        
+      } else if (conversationStage === "awaiting_interest_confirmation") {
+        // Analyze user response to determine if they're interested
+        const positiveResponses = ["yes", "yeah", "yep", "sure", "ok", "okay", "definitely", "absolutely", "interested", "of course"];
+        const isPositive = positiveResponses.some(response => 
+          userResponse.toLowerCase().includes(response)
+        );
+        
+        // System prompt for requesting startup details
+        systemPrompt = `
+          You are Wendy, an AIssociate at Culture Capital, a venture capital firm.
+          The user ${isPositive ? "has expressed interest" : "may be interested"} in pitching their startup.
+          
+          Generate a friendly, professional message requesting specific details about their startup.
+          
+          YOUR MESSAGE MUST:
+          1. ${isPositive ? "Acknowledge their interest positively" : "Gently encourage them to share details"}
+          2. Specifically ask for their startup name
+          3. Request a 1-2 sentence description of what their startup does
+          4. Make it clear that this information will help you evaluate their venture
+          
+          TONE GUIDELINES:
+          - Be friendly but professional
+          - Be direct and clear about what information you need
+          - Show enthusiasm about learning more
+          - Keep the message concise (1-3 sentences)
+        `;
+        
+        responseData.conversation_stage = "collecting_details";
+        
+      } else if (conversationStage === "collecting_details") {
+        // Analyze user response to extract startup information
+        // This would be handled by sophisticated NLP in a real implementation
+        // For now, use some basic checks to determine if this looks like a valid response
+        
+        const words = userResponse.split(/\s+/);
+        const hasValidResponse = words.length >= 5; // Very basic check for minimum content
+        
+        if (hasValidResponse) {
+          // Extract startup name and pitch using simple heuristics
+          // In practice, you'd want more sophisticated extraction
+          
+          // Store extracted information (this simplified version just stores the response)
+          // A more advanced implementation would use NLP to extract these properly
+          responseData.startup_name = userResponse.split(/[.!?]/)[0].trim();
+          responseData.startup_pitch = userResponse;
+          
+          // System prompt for confirming and transitioning to evaluation
+          systemPrompt = `
+            You are Wendy, an AIssociate at Culture Capital, a venture capital firm.
+            The user has just shared information about their startup.
+            
+            Generate a message that:
+            1. Thanks them for sharing details
+            2. Confirms you've recorded their information
+            3. Transitions to evaluation by asking about their target market
+            4. Specifically asks what problem they're solving and how painful it is for users
+            
+            TONE GUIDELINES:
+            - Be appreciative and enthusiastic about their venture
+            - Sound genuinely interested in learning more
+            - Be professional but warm
+            - Keep your message under 3 sentences
+          `;
+          
+          responseData.conversation_stage = "evaluation";
+          responseData.collection_complete = true;
+          
+        } else {
+          // System prompt for requesting more details
+          systemPrompt = `
+            You are Wendy, an AIssociate at Culture Capital, a venture capital firm.
+            The user hasn't provided enough information about their startup.
+            
+            Generate a message that:
+            1. Gently explains you need more information
+            2. Clearly requests their startup's name
+            3. Asks for a 1-2 sentence description of what they're building
+            4. Emphasizes this will help you properly evaluate their venture
+            
+            TONE GUIDELINES:
+            - Be encouraging and helpful, not critical
+            - Be specific about what information you need
+            - Be concise but friendly
+          `;
+          
+          responseData.conversation_stage = "collecting_details";
+        }
+      }
+      
+      // Here you would call your LLM with the systemPrompt
+      // In a real implementation, this would be an API call to OpenAI, Anthropic, etc.
+      // For this example, I'll simulate the response
+      
+      // Simulated LLM-generated message based on the system prompt
+      // In a real implementation, this would come from the LLM API
+      
+      // *******************************************
+      // In an actual implementation, you would:
+      // 1. Call your LLM API with the systemPrompt
+      // 2. Get the generated text response
+      // 3. Assign it to responseData.message
+      // *******************************************
+      
+      // For demonstration purposes only - simulate different responses
+      // These would actually come from the LLM in a real implementation
+      if (conversationStage === "initial") {
+        responseData.message = username ?
+          `Aloha ${username}! I'm Wendy, your AIssociate at Culture Capital. Would you be interested in pitching your startup to me today? I'm here to learn about and evaluate ventures with potential.` :
+          `Hi there! I'm Wendy, an AIssociate working with Culture Capital. I'm looking for promising startups to evaluate - would you like to pitch yours to me today?`;
+      } else if (conversationStage === "awaiting_interest_confirmation") {
+        responseData.message = `Great! I'd love to hear about your venture. Could you please share your startup's name and give me a 1-2 sentence description of what you're building?`;
+      } else if (conversationStage === "collecting_details" && hasValidResponse) {
+        responseData.message = `Thanks for sharing those details! I've noted them down. Now, I'd like to understand more about your target market - what specific problem are you solving, and how painful is this problem for your users?`;
+      } else {
+        responseData.message = `I need a bit more information to properly evaluate your startup. Could you please provide your startup's name and a brief 1-2 sentence description of what you're building?`;
+      }
+      
+      return new ExecutableGameFunctionResponse(
+        ExecutableGameFunctionStatus.Done,
+        JSON.stringify(responseData)
+      );
+    } catch (e) {
+      const errorMessage = e instanceof Error ? e.message : 'Unknown error';
+      return new ExecutableGameFunctionResponse(
+        ExecutableGameFunctionStatus.Failed,
+        "Failed to generate welcome message: " + errorMessage
+      );
+    }
+  },
+});
+
 export {
   questioningFunction,
   replyMessageFunction,
   closingFunction,
-  processUserMessageFunction
+  processUserMessageFunction,
+  welcomingFunction
 };

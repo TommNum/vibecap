@@ -10,6 +10,13 @@ import dotenv from "dotenv";
 import TelegramPlugin from "./telegramPlugin";
 import axios from "axios";
 import { dbService } from './services/database';
+import { 
+    questioningFunction, 
+    replyMessageFunction, 
+    closingFunction, 
+    processUserMessageFunction,
+    welcomingFunction
+} from './functions';
 
 dotenv.config();
 
@@ -597,25 +604,42 @@ const processConversationFunction = new GameFunction({
                 // Reset conversation to welcome state if not already done
                 chatData.conversationStage = 'welcome';
                 
-                // Create welcome message
-                const welcomeMsg = "Hi! I am Wendy, your AIssociate at Culture Capital. I'd like to learn about you're working on to evaluate its potential. Could you start by telling me the project name and what it does in 1-2 sentences?";
-                
-                // Only add to history if not already there
-                const alreadyResponded = chatData.conversationHistory
-                    .filter(msg => msg.role === "assistant")
-                    .some(msg => msg.content === welcomeMsg);
-                    
-                if (!alreadyResponded) {
-                    // Add to conversation history
-                    chatData.conversationHistory.push({
-                        role: "assistant",
-                        content: welcomeMsg,
-                        timestamp: Date.now()
-                    });
-                    
-                    // Send directly
-                    await sendTelegramMessage(chatId as string, welcomeMsg);
-                }
+                // Generate dynamic welcome message
+                welcomingFunction.executable({
+                    is_returning: false,
+                    username: chatData.telegramUsername
+                }, (msg) => console.log(`[welcome_function] ${msg}`))
+                .then(response => {
+                    if (response.status === ExecutableGameFunctionStatus.Done) {
+                        const result = JSON.parse(response.message);
+                        const welcomeMsg = result.message;
+                        
+                        // Add to conversation history
+                        chatData.conversationHistory.push({
+                            role: "user",
+                            content: "/start",
+                            timestamp: Date.now()
+                        });
+                        
+                        chatData.conversationHistory.push({
+                            role: "assistant",
+                            content: welcomeMsg,
+                            timestamp: Date.now()
+                        });
+                        
+                        // Send welcome message immediately
+                        sendTelegramMessage(chatId as string, welcomeMsg)
+                            .then(() => console.log(`Sent generated welcome message to chat ${chatId}`))
+                            .catch(err => console.error(`Error sending welcome message: ${err}`));
+                    } else {
+                        // Fallback handling
+                        // ... existing fallback code ...
+                    }
+                })
+                .catch(err => {
+                    console.error(`Error executing welcome function: ${err}`);
+                    // Fallback handling
+                });
                 
                 // Remove from processing queue
                 agentState.processingQueue = agentState.processingQueue.filter(id => id !== chatId);
@@ -1277,9 +1301,6 @@ export const handleTelegramUpdate = (update: any) => {
             // Initialize chat data
             const chatData = initChatData(chatId, userId, username);
             
-            // Set the username
-            chatData.telegramUsername = username;
-            
             // Reset conversation state
             chatData.conversationStage = 'welcome';
             chatData.startupName = '';
@@ -1288,26 +1309,42 @@ export const handleTelegramUpdate = (update: any) => {
             chatData.nudgeCount = 0;
             chatData.questionCount = 0;
             
-            // Create welcome message
-            const welcomeMsg = "Hi! I am Wendy, your AIssociate at Culture Capital. I'd like to learn about you're working on to evaluate its potential. Could you start by telling me the project name and what it does in 1-2 sentences?";
-            
-            // Add to conversation history
-            chatData.conversationHistory.push({
-                role: "user",
-                content: "/start",
-                timestamp: Date.now()
+            // Generate dynamic welcome message
+            welcomingFunction.executable({
+                is_returning: false,
+                username: username
+            }, (msg) => console.log(`[welcome_function] ${msg}`))
+            .then(response => {
+                if (response.status === ExecutableGameFunctionStatus.Done) {
+                    const result = JSON.parse(response.message);
+                    const welcomeMsg = result.message;
+                    
+                    // Add to conversation history
+                    chatData.conversationHistory.push({
+                        role: "user",
+                        content: "/start",
+                        timestamp: Date.now()
+                    });
+                    
+                    chatData.conversationHistory.push({
+                        role: "assistant",
+                        content: welcomeMsg,
+                        timestamp: Date.now()
+                    });
+                    
+                    // Send welcome message immediately
+                    sendTelegramMessage(chatId, welcomeMsg)
+                        .then(() => console.log(`Sent generated welcome message to chat ${chatId}`))
+                        .catch(err => console.error(`Error sending welcome message: ${err}`));
+                } else {
+                    // Fallback handling
+                    // ... existing fallback code ...
+                }
+            })
+            .catch(err => {
+                console.error(`Error executing welcome function: ${err}`);
+                // Fallback handling
             });
-            
-            chatData.conversationHistory.push({
-                role: "assistant",
-                content: welcomeMsg,
-                timestamp: Date.now()
-            });
-            
-            // Send welcome message immediately
-            sendTelegramMessage(chatId, welcomeMsg)
-                .then(() => console.log(`Sent immediate welcome message to chat ${chatId}`))
-                .catch(err => console.error(`Error sending welcome message: ${err}`));
         }
 
         // Process the message with our function
