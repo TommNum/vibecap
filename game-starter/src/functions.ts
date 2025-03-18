@@ -30,14 +30,11 @@ const welcomingFunction = new GameFunction({
       
       logger(`Generating welcome message for ${isReturning ? "returning" : "new"} user${username ? ` with username ${username}` : ""}`);
       
-      // Return placeholder for the agent to replace with generated content
+      // Return a simple, direct message instead of a placeholder
       return new ExecutableGameFunctionResponse(
         ExecutableGameFunctionStatus.Done,
-        JSON.stringify({
-          message: "[GENERATE_WELCOME_MESSAGE]",
-          is_returning: isReturning,
-          username: username
-        })
+        // Just return a direct string with a personalized greeting
+        `Hi${username ? ` ${username}` : ""}! I'm Wendy, your AIssociate at Culture Capital. I'd love to learn what you're working on so I can evaluate its potential. Can you tell me about your startup?`
       );
     } catch (e) {
       const errorMessage = e instanceof Error ? e.message : 'Unknown error';
@@ -252,15 +249,10 @@ const errorRecoveryFunction = new GameFunction({
       
       logger(`Generating error recovery for ${error_type} at ${conversation_stage} stage`);
       
-      // Return placeholder for the agent to replace with generated content
+      // Return a direct message string rather than a JSON structure
       return new ExecutableGameFunctionResponse(
         ExecutableGameFunctionStatus.Done,
-        JSON.stringify({
-          message: "[GENERATE_ERROR_RECOVERY]",
-          startup_name: startup_name || "",
-          conversation_stage: conversation_stage,
-          error_type: error_type
-        })
+        `I apologize for the technical issue. Let's continue our conversation${startup_name ? ` about ${startup_name}` : ""}. Could you tell me more about your startup?`
       );
     } catch (e) {
       const errorMessage = e instanceof Error ? e.message : 'Unknown error';
