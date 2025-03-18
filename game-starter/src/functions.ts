@@ -2,7 +2,6 @@ import { config } from 'dotenv';
 import { resolve } from 'path';
 
 // Load environment variables from .env file only in local development
-// Railway automatically provides environment variables in production/staging
 if (process.env.ENVIRONMENT !== 'production' && process.env.ENVIRONMENT !== 'staging') {
   console.log('Loading environment variables from .env file for local development');
   config({ path: resolve(__dirname, '../.env') });
@@ -16,334 +15,29 @@ import {
   ExecutableGameFunctionStatus,
 } from "@virtuals-protocol/game";
 
-// Function to send questions and manage conversation flow
-const questioningFunction = new GameFunction({
-  name: "ask_question",
-  description: "Ask the user questions about their startup and process their responses",
-  args: [
-    { name: "questionType", description: "Type of question to ask (welcome, pitch, market, traction, team, technology, revenue, problem)" },
-    { name: "previousResponses", description: "Previous responses from the user to avoid duplicate questions" },
-    { name: "questionCount", description: "Current count of questions asked to track limit" }
-  ] as const,
-
-  executable: async (args, logger) => {
-    try {
-      const { questionType, previousResponses, questionCount } = args;
-
-      // Check if we've reached question limit
-      const count = parseInt(questionCount as string) || 0;
-      if (count >= 15) {
-        return new ExecutableGameFunctionResponse(
-          ExecutableGameFunctionStatus.Done,
-          "Question limit reached, proceed to closing"
-        );
-      }
-
-      let message = "";
-
-      // Generate appropriate question based on type and context
-      if (questionType === "welcome") {
-        message = "Hi! I am Wendy, your Associate at Vibe Capital. I'd like to learn about your startup to evaluate its potential. Would you like to pitch your startup to me today?";
-      } else {
-        // Generate dynamic, contextual questions based on previous responses
-        // This will rely on the LLM's ability to formulate appropriate questions
-        // No hardcoded word bank - the LLM should generate these based on context
-
-        // Example logic for different question types (the actual implementation would rely on LLM)
-        switch (questionType) {
-          case "market":
-            message = "Based on what you've shared, I'd like to understand more about your target market. What's the total addressable market size and how do you plan to capture it?";
-            break;
-          case "traction":
-            message = "Let's talk about traction. How many daily active users do you have now, and what growth are you projecting in the next 6 months?";
-            break;
-          case "team":
-            message = "Could you tell me about your founding team's background and relevant expertise in this domain?";
-            break;
-          case "technology":
-            message = "What technological innovations set your product apart, and how have you designed your onboarding process to minimize friction?";
-            break;
-          case "revenue":
-            message = "Regarding your business model, what's your current revenue situation and monetization strategy going forward?";
-            break;
-          case "problem":
-            message = "What specific problem are you solving, and how painful is this problem for your target users?";
-            break;
-          default:
-            message = "Could you elaborate more on your startup's vision and how you plan to execute it?";
-        }
-      }
-
-      // Use reply_message function to send the question
-      // In a real implementation, you would call the actual Telegram API here
-      logger(`Sending question to user: ${message}`);
-
-      // Here you would integrate with the Telegram webhook to send the message
-
-      return new ExecutableGameFunctionResponse(
-        ExecutableGameFunctionStatus.Done,
-        JSON.stringify({
-          message: message,
-          questionCount: count + 1
-        })
-      );
-    } catch (e: unknown) {
-      const errorMessage = e instanceof Error ? e.message : 'Unknown error';
-      return new ExecutableGameFunctionResponse(
-        ExecutableGameFunctionStatus.Failed,
-        "Failed to ask question: " + errorMessage
-      );
-    }
-  },
-});
-
-// Function to reply to user messages
-const replyMessageFunction = new GameFunction({
-  name: "reply_message",
-  description: "Reply to a message",
-  args: [
-    { name: "message", description: "The message to reply" },
-    {
-      name: "media_url",
-      description: "The media url to attach to the message",
-      optional: true,
-    },
-  ] as const,
-
-  executable: async (args, logger) => {
-    try {
-      // TODO: Implement replying to message with image
-      if (args.media_url) {
-        logger(`Reply with media: ${args.media_url}`);
-      }
-
-      // TODO: Implement replying to message
-      logger(`Replying to message: ${args.message}`);
-
-      return new ExecutableGameFunctionResponse(
-        ExecutableGameFunctionStatus.Done,
-        `Replied with message: ${args.message}`
-      );
-    } catch (e) {
-      return new ExecutableGameFunctionResponse(
-        ExecutableGameFunctionStatus.Failed,
-        "Failed to reply to message"
-      );
-    }
-  },
-});
-
-// Function to close the conversation and provide evaluation
-const closingFunction = new GameFunction({
-  name: "close_conversation",
-  description: "Close the conversation and provide final evaluation",
-  args: [
-    { name: "conversationData", description: "All collected data from the conversation" },
-    { name: "isForced", description: "Whether this is a forced close due to question limit or user requested", optional: true },
-    { name: "isClosed", description: "Whether the conversation is already closed", optional: true }
-  ] as const,
-
-  executable: async (args, logger) => {
-    try {
-      const { conversationData, isForced, isClosed } = args;
-
-      // If conversation is already closed, remind the user
-      if (isClosed) {
-        const conversationObj = typeof conversationData === 'string'
-          ? JSON.parse(conversationData)
-          : conversationData || {};
-
-        const appId = conversationObj.appId || `VC-${Date.now().toString(36)}-CLOSED`;
-        const reminder = `I'm sorry, but our evaluation session has already concluded. Your application ID is ${appId}. Thank you again for your time!`;
-
-        // Send the reminder via Telegram webhook
-        logger(`Sending closure reminder: ${reminder}`);
-
-        return new ExecutableGameFunctionResponse(
-          ExecutableGameFunctionStatus.Done,
-          JSON.stringify({ message: reminder, closed: true })
-        );
-      }
-
-      // Generate a unique App ID
-      const appId = `VC-${Date.now().toString(36)}-${Math.random().toString(36).substr(2, 5)}`.toUpperCase();
-
-      // Evaluate the startup based on the conversation data
-      // This would be handled by the LLM's reasoning capabilities
-
-      // Calculate scores (0-100) based on collected data
-      const executionScore = Math.floor(Math.random() * 31) + 70; // Placeholder for actual evaluation logic
-      const marketScore = Math.floor(Math.random() * 31) + 70;
-      const growthScore = Math.floor(Math.random() * 31) + 70;
-      const returnPotentialScore = Math.floor(Math.random() * 31) + 70;
-
-      const overallScore = Math.floor((executionScore + marketScore + growthScore + returnPotentialScore) / 4);
-
-      // Create closing message with App ID and scores
-      const closingMessage = `Thank you for sharing details about your startup! Based on our conversation, I've completed my evaluation.\n\nYour Application ID is: ${appId}\n\nYour venture received an overall rating of ${overallScore}/100, reflecting our assessment of your execution capability, market approach, growth potential, and investment return profile.\n\nThe Vibe Capital team will contact you if there's interest in further discussions. Best of luck with your venture!`;
-
-      // Send the closing message via Telegram webhook
-      logger(`Sending closing message: ${closingMessage}`);
-
-      return new ExecutableGameFunctionResponse(
-        ExecutableGameFunctionStatus.Done,
-        JSON.stringify({
-          message: closingMessage,
-          appId: appId,
-          scores: {
-            execution: executionScore,
-            market: marketScore,
-            growth: growthScore,
-            returnPotential: returnPotentialScore,
-            overall: overallScore
-          },
-          closed: true
-        })
-      );
-    } catch (e: unknown) {
-      const errorMessage = e instanceof Error ? e.message : 'Unknown error';
-      return new ExecutableGameFunctionResponse(
-        ExecutableGameFunctionStatus.Failed,
-        "Failed to close conversation: " + errorMessage
-      );
-    }
-  },
-});
-
-// Function to process user messages
-const processUserMessageFunction = new GameFunction({
-  name: "process_user_message",
-  description: "Process a user message and determine the next action",
-  args: [
-    { name: "conversationState", description: "Current state of the conversation" },
-    { name: "message", description: "The user's message" },
-  ] as const,
-
-  executable: async (args, logger) => {
-    try {
-      const { conversationState, message } = args;
-
-      // Store the user's response
-      const stateObj = typeof conversationState === 'string'
-        ? JSON.parse(conversationState)
-        : conversationState || {};
-
-      const updatedState = {
-        ...stateObj,
-        responses: [...(stateObj.responses || []), message]
-      };
-
-      // Determine if we've reached question limit
-      const questionCount = updatedState.questionCount || 0;
-      if (questionCount >= 15) {
-        return new ExecutableGameFunctionResponse(
-          ExecutableGameFunctionStatus.Done,
-          JSON.stringify({
-            action: "close_conversation",
-            conversationState: updatedState,
-            isForced: true
-          })
-        );
-      }
-
-      // Determine next question type based on conversation history
-      // This would rely on the LLM's understanding of the conversation flow
-      let nextQuestionType;
-
-      if (updatedState.questionCount === 0) {
-        // After welcome, ask about pitch
-        nextQuestionType = "pitch";
-      } else if (updatedState.questionCount === 1) {
-        // After pitch, ask about market
-        nextQuestionType = "market";
-      } else {
-        // For subsequent questions, cycle through the different categories
-        // The actual implementation would be more sophisticated and context-aware
-        const questionTypes = ["traction", "team", "technology", "revenue", "problem"];
-        nextQuestionType = questionTypes[updatedState.questionCount % questionTypes.length];
-      }
-
-      return new ExecutableGameFunctionResponse(
-        ExecutableGameFunctionStatus.Done,
-        JSON.stringify({
-          action: "ask_question",
-          questionType: nextQuestionType,
-          conversationState: updatedState
-        })
-      );
-    } catch (e: unknown) {
-      const errorMessage = e instanceof Error ? e.message : 'Unknown error';
-      return new ExecutableGameFunctionResponse(
-        ExecutableGameFunctionStatus.Failed,
-        "Failed to process user message: " + errorMessage
-      );
-    }
-  },
-});
-
-// Function to generate personalized welcome messages via LLM
+// Function to generate personalized welcome messages
 const welcomingFunction = new GameFunction({
   name: "generate_welcome_message",
-  description: "Use LLM to generate a personalized, unique welcome message based on conversation context",
+  description: "Generate a personalized welcome message for new or returning users",
   args: [
-    { name: "is_returning", description: "Whether this user has interacted before (true/false)", optional: true },
-    { name: "username", description: "The Telegram username of the user if available", optional: true },
-    { name: "conversation_stage", description: "Current stage of conversation (initial, interest_confirmed, collecting_details)", optional: true },
-    { name: "startup_name", description: "Startup name if already provided", optional: true },
-    { name: "startup_pitch", description: "Startup pitch if already provided", optional: true },
-    { name: "user_response", description: "The user's latest response", optional: true }
+    { name: "is_returning", description: "Whether this user has conversed before ('true' or 'false')" },
+    { name: "username", description: "User's Telegram username if available" }
   ] as const,
-  
   executable: async (args, logger) => {
     try {
       const isReturning = args.is_returning === "true";
       const username = args.username || "";
-      const conversationStage = args.conversation_stage || "initial";
-      const userResponse = args.user_response || "";
-      const startupName = args.startup_name || "";
-      const startupPitch = args.startup_pitch || "";
       
-      // Create context string for logging
-      let context = `${isReturning ? "returning" : "new"} user at stage ${conversationStage}`;
-      if (username) context += ` with username ${username}`;
+      logger(`Generating welcome message for ${isReturning ? "returning" : "new"} user${username ? ` with username ${username}` : ""}`);
       
-      logger(`Generating welcome message for ${context}`);
-      
-      // Initialize response data structure
-      const responseData = {
-        message: "",
-        conversation_stage: conversationStage === "initial" ? "awaiting_interest_confirmation" : conversationStage,
-        startup_name: startupName,
-        startup_pitch: startupPitch,
-        collection_complete: false
-      };
-      
-      // This function no longer handles the actual message generation
-      // The agent's built-in LLM will generate welcome messages based on instructions in its system prompt
-      // This function now only provides a placeholder message that will be replaced by the agent
-      
-      // We'll set a placeholder message that indicates to the agent it should generate a welcome
-      // The agent's LLM will see this response and know to generate a proper welcome
-      // The agent has specific instructions in its system prompt for welcome message generation
-      responseData.message = "[GENERATE_WELCOME_MESSAGE]";
-            
-      // For backwards compatibility, ensure we don't break existing code
-      // If this function is used directly without the agent LLM, provide a basic fallback
-      if (process.env.SKIP_LLM === "true") {
-        // Only use these as fallbacks when explicitly configured to skip LLM
-        if (conversationStage === "initial") {
-          responseData.message = username ?
-            `Hello ${username}! I'm Wendy from Culture Capital. What startup are you working on?` :
-            `Hello! I'm Wendy from Culture Capital. What startup are you working on?`;
-        }
-      }
-      
-      // Log the result
-      logger(`Returning response data for ${context}`);
-      
+      // Return placeholder for the agent to replace with generated content
       return new ExecutableGameFunctionResponse(
         ExecutableGameFunctionStatus.Done,
-        JSON.stringify(responseData)
+        JSON.stringify({
+          message: "[GENERATE_WELCOME_MESSAGE]",
+          is_returning: isReturning,
+          username: username
+        })
       );
     } catch (e) {
       const errorMessage = e instanceof Error ? e.message : 'Unknown error';
@@ -355,10 +49,234 @@ const welcomingFunction = new GameFunction({
   },
 });
 
+// Function to generate evaluation questions
+const questioningFunction = new GameFunction({
+  name: "generate_evaluation_question",
+  description: "Generate a tailored question to evaluate a specific aspect of a startup",
+  args: [
+    { name: "category", description: "Category to evaluate: market, product, traction, financials, or team" },
+    { name: "question_number", description: "Which question in sequence (1-3) for this category" },
+    { name: "startup_name", description: "Name of the startup being evaluated" },
+    { name: "previous_answers", description: "Summary of previous answers in this category if available" }
+  ] as const,
+  executable: async (args, logger) => {
+    try {
+      const { category, question_number, startup_name, previous_answers } = args;
+      
+      logger(`Generating ${category} question #${question_number} for ${startup_name || "startup"}`);
+      
+      // Return placeholder for the agent to replace with generated content
+      return new ExecutableGameFunctionResponse(
+        ExecutableGameFunctionStatus.Done,
+        JSON.stringify({
+          message: "[GENERATE_EVALUATION_QUESTION]",
+          category: category,
+          question_number: question_number,
+          startup_name: startup_name || ""
+        })
+      );
+    } catch (e) {
+      const errorMessage = e instanceof Error ? e.message : 'Unknown error';
+      return new ExecutableGameFunctionResponse(
+        ExecutableGameFunctionStatus.Failed,
+        "Failed to generate evaluation question: " + errorMessage
+      );
+    }
+  },
+});
+
+// Function to generate contextual responses
+const replyMessageFunction = new GameFunction({
+  name: "generate_response",
+  description: "Generate appropriate response based on conversation context",
+  args: [
+    { name: "context", description: "Context requiring response (ask_name, ask_links, behavior_warning, data_privacy, etc.)" },
+    { name: "startup_name", description: "Name of startup if available" },
+    { name: "user_message", description: "User's message being responded to" }
+  ] as const,
+  executable: async (args, logger) => {
+    try {
+      const { context, startup_name, user_message } = args;
+      
+      logger(`Generating ${context} response for ${startup_name || "startup"}`);
+      
+      // Return placeholder for the agent to replace with generated content
+      return new ExecutableGameFunctionResponse(
+        ExecutableGameFunctionStatus.Done,
+        JSON.stringify({
+          message: "[GENERATE_CONTEXTUAL_RESPONSE]",
+          context: context,
+          startup_name: startup_name || ""
+        })
+      );
+    } catch (e) {
+      const errorMessage = e instanceof Error ? e.message : 'Unknown error';
+      return new ExecutableGameFunctionResponse(
+        ExecutableGameFunctionStatus.Failed,
+        "Failed to generate response: " + errorMessage
+      );
+    }
+  },
+});
+
+// Function to generate closing evaluations
+const closingFunction = new GameFunction({
+  name: "generate_closing_evaluation",
+  description: "Generate final evaluation with scores and next steps",
+  args: [
+    { name: "startup_name", description: "Name of the startup" },
+    { name: "app_id", description: "Application ID assigned to this startup" },
+    { name: "category_scores", description: "JSON string with scores for each category" },
+    { name: "total_score", description: "Total evaluation score (0-500)" },
+    { name: "qualified", description: "Whether startup qualified ('true' or 'false')" }
+  ] as const,
+  executable: async (args, logger) => {
+    try {
+      const { startup_name, app_id, category_scores, total_score, qualified } = args;
+      
+      logger(`Generating final evaluation for ${startup_name || "startup"} with score ${total_score}/500`);
+      
+      // Return placeholder for the agent to replace with generated content
+      return new ExecutableGameFunctionResponse(
+        ExecutableGameFunctionStatus.Done,
+        JSON.stringify({
+          message: "[GENERATE_CLOSING_EVALUATION]",
+          startup_name: startup_name || "",
+          app_id: app_id,
+          category_scores: category_scores,
+          total_score: total_score,
+          qualified: qualified
+        })
+      );
+    } catch (e) {
+      const errorMessage = e instanceof Error ? e.message : 'Unknown error';
+      return new ExecutableGameFunctionResponse(
+        ExecutableGameFunctionStatus.Failed,
+        "Failed to generate closing evaluation: " + errorMessage
+      );
+    }
+  },
+});
+
+// Function to analyze user messages
+const processUserMessageFunction = new GameFunction({
+  name: "analyze_user_message",
+  description: "Analyze user message for data privacy questions, problematic behavior, etc.",
+  args: [
+    { name: "message", description: "User message content to analyze" },
+    { name: "conversation_stage", description: "Current stage in conversation flow" },
+    { name: "previous_warnings", description: "Number of previous behavior warnings issued" }
+  ] as const,
+  executable: async (args, logger) => {
+    try {
+      const { message, conversation_stage, previous_warnings } = args;
+      
+      logger(`Analyzing user message at ${conversation_stage} stage`);
+      
+      // Return placeholder for the agent to replace with generated content
+      return new ExecutableGameFunctionResponse(
+        ExecutableGameFunctionStatus.Done,
+        JSON.stringify({
+          message: message,
+          analysis: "[ANALYZE_USER_BEHAVIOR]",
+          conversation_stage: conversation_stage,
+          previous_warnings: previous_warnings,
+          is_data_privacy: message.toLowerCase().includes("data privacy") || 
+                          message.toLowerCase().includes("protect my data") ||
+                          message.toLowerCase().includes("what will you do with my data")
+        })
+      );
+    } catch (e) {
+      const errorMessage = e instanceof Error ? e.message : 'Unknown error';
+      return new ExecutableGameFunctionResponse(
+        ExecutableGameFunctionStatus.Failed,
+        "Failed to analyze user message: " + errorMessage
+      );
+    }
+  },
+});
+
+// Generate nudge messages for inactive users
+const generateNudgeFunction = new GameFunction({
+  name: "generate_nudge",
+  description: "Generate a nudge message for inactive users",
+  args: [
+    { name: "startup_name", description: "Name of the startup if available" },
+    { name: "nudge_count", description: "Number of previous nudges (1-4)" },
+    { name: "last_activity_hours", description: "Hours since last user activity" },
+    { name: "app_id", description: "Application ID for the conversation" }
+  ] as const,
+  executable: async (args, logger) => {
+    try {
+      const { startup_name, nudge_count, last_activity_hours, app_id } = args;
+      
+      const count = parseInt(nudge_count as string) || 1;
+      const isClosing = count >= 4;
+      
+      logger(`Generating ${isClosing ? "closing" : "nudge"} message #${count} for ${startup_name || "startup"}`);
+      
+      // Return placeholder for the agent to replace with generated content
+      return new ExecutableGameFunctionResponse(
+        ExecutableGameFunctionStatus.Done,
+        JSON.stringify({
+          message: "[GENERATE_NUDGE_MESSAGE]",
+          startup_name: startup_name || "",
+          nudge_count: count,
+          is_closing: isClosing,
+          app_id: app_id
+        })
+      );
+    } catch (e) {
+      const errorMessage = e instanceof Error ? e.message : 'Unknown error';
+      return new ExecutableGameFunctionResponse(
+        ExecutableGameFunctionStatus.Failed,
+        "Failed to generate nudge message: " + errorMessage
+      );
+    }
+  },
+});
+
+// Generate error recovery messages
+const errorRecoveryFunction = new GameFunction({
+  name: "generate_error_recovery",
+  description: "Generate a response when an error occurs in processing",
+  args: [
+    { name: "startup_name", description: "Name of the startup if available" },
+    { name: "conversation_stage", description: "Current stage in conversation" },
+    { name: "error_type", description: "Type of error that occurred" }
+  ] as const,
+  executable: async (args, logger) => {
+    try {
+      const { startup_name, conversation_stage, error_type } = args;
+      
+      logger(`Generating error recovery for ${error_type} at ${conversation_stage} stage`);
+      
+      // Return placeholder for the agent to replace with generated content
+      return new ExecutableGameFunctionResponse(
+        ExecutableGameFunctionStatus.Done,
+        JSON.stringify({
+          message: "[GENERATE_ERROR_RECOVERY]",
+          startup_name: startup_name || "",
+          conversation_stage: conversation_stage,
+          error_type: error_type
+        })
+      );
+    } catch (e) {
+      const errorMessage = e instanceof Error ? e.message : 'Unknown error';
+      return new ExecutableGameFunctionResponse(
+        ExecutableGameFunctionStatus.Failed,
+        "Failed to generate error recovery: " + errorMessage
+      );
+    }
+  },
+});
+
 export {
   questioningFunction,
   replyMessageFunction,
   closingFunction,
   processUserMessageFunction,
-  welcomingFunction
+  welcomingFunction,
+  generateNudgeFunction,
+  errorRecoveryFunction
 };

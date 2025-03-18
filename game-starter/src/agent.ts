@@ -15,7 +15,9 @@ import {
     replyMessageFunction, 
     closingFunction, 
     processUserMessageFunction,
-    welcomingFunction
+    welcomingFunction,
+    generateNudgeFunction,
+    errorRecoveryFunction
 } from './functions';
 
 dotenv.config();
@@ -249,108 +251,6 @@ const sendTelegramMessage = async (chatId: string, text: string): Promise<boolea
     }
 };
 
-// Helper function to detect bad behavior in user messages
-const detectBadBehavior = (message: string, conversationStage?: string): { isBad: boolean; isRude: boolean; reason: string } => {
-    if (!message) return { isBad: true, isRude: false, reason: "Empty message" };
-
-    // Convert to lowercase for easier matching
-    const lowerMsg = message.toLowerCase().trim();
-
-    // Special cases that should not trigger bad behavior
-    // 1. Handle /start command specifically - this is a standard Telegram command
-    if (lowerMsg === "/start") {
-        return { isBad: false, isRude: false, reason: "" };
-    }
-
-    // 2. Handle data privacy related questions - consider these valid with more lenient detection
-    if (lowerMsg.includes("data privacy") ||
-        lowerMsg.includes("protect my data") ||
-        lowerMsg.includes("what will you do with my data") ||
-        lowerMsg.includes("what do you do with my data") ||
-        lowerMsg.includes("what about my data") ||
-        (lowerMsg.includes("data") && (
-            lowerMsg.includes("secure") ||
-            lowerMsg.includes("protect") ||
-            lowerMsg.includes("use") ||
-            lowerMsg.includes("privacy") ||
-            lowerMsg.includes("how")
-        ))) {
-        return { isBad: false, isRude: false, reason: "" };
-    }
-
-    // Special case: Allow single word responses when asking for startup name
-    if (conversationStage === 'startup_name') {
-        return { isBad: false, isRude: false, reason: "" };
-    }
-
-    // Special case: Allow "No links" response
-    if (lowerMsg === "no links") {
-        return { isBad: false, isRude: false, reason: "" };
-    }
-
-    // NEW: Allow common positive one-word responses and greetings
-    const positiveResponses = [
-        "hi", "hello", "hey", "thanks", "thank", "yes", "yeah", "yep", "sure", 
-        "ok", "okay", "great", "good", "nice", "cool", "perfect", "agreed", 
-        "correct", "absolutely", "definitely", "exactly", "yo", "sup", "gm",
-        "based", "rizz", "fr", "hit me", "👍", "👋", "🙏", "understood", "got it",
-        "alright", "sounds good", "makes sense", "will do", "noted", "done", 
-        "completed", "finished", "sent", "shared", "provided", "submitted", 
-        "appreciate it", "thank you", "thanks a lot", "thx", "ty", "tnx", 
-        "awesome", "amazing", "excellent", "fantastic", "wonderful", "superb",
-        "brilliant", "terrific", "outstanding", "impressive", "remarkable",
-        "no problem", "np", "anytime", "of course", "certainly", "indeed",
-        "true", "right", "affirmative", "roger that", "10-4", "ack", "acknowledged"
-    ];
-    
-    if (positiveResponses.includes(lowerMsg) || 
-        positiveResponses.some(word => lowerMsg === word) || 
-        /^(hi|hey|hello)( there)?!?$/.test(lowerMsg)) {
-        return { isBad: false, isRude: false, reason: "" };
-    }
-
-    // Check for very short messages (except those that might be startup names)
-    if (lowerMsg.split(/\s+/).length < 3 && lowerMsg.length < 15) {
-        return { isBad: true, isRude: false, reason: "Message too short to be meaningful" };
-    }
-
-    // Check for rude content
-    const rudePatterns = [
-        /\b(stupid|dumb|idiot|suck|bad|useless|fool)\b/i,
-        /\b(fuck|shit|crap|ass|bitch)\b/i,
-        /\?{3,}/,  // Multiple question marks often indicate frustration
-        /\byou are\s+([^.]{1,20})\b/i, // "you are X" where X is short (likely an insult)
-    ];
-
-    for (const pattern of rudePatterns) {
-        if (pattern.test(lowerMsg)) {
-            return { isBad: true, isRude: true, reason: "Contains rude or inappropriate language" };
-        }
-    }
-
-    // Check for meaningless or testing messages
-    const testPatterns = [
-        /\b(test|testing)\b/i,
-        /\bwhy\s+(would|should|do|can)\s+i\b/i, // Questioning patterns like "why would I"
-    ];
-
-    for (const pattern of testPatterns) {
-        if (pattern.test(lowerMsg) && lowerMsg.length < 30) {
-            return { isBad: true, isRude: false, reason: "Appears to be a test message without startup information" };
-        }
-    }
-
-    // Check if message discusses the bot itself rather than a startup
-    if (lowerMsg.includes("you") && lowerMsg.length < 50 &&
-        !lowerMsg.includes("startup") && !lowerMsg.includes("company") &&
-        !lowerMsg.includes("product") && !lowerMsg.includes("data")) {
-        return { isBad: true, isRude: false, reason: "Message is about the bot rather than a startup" };
-    }
-
-    // Message passes all checks
-    return { isBad: false, isRude: false, reason: "" };
-};
-
 // =========================================================================
 // WORKER FUNCTIONS
 // =========================================================================
@@ -449,93 +349,68 @@ const receiveMessageFunction = new GameFunction({
                 timestamp: Date.now()
             });
 
-            // Check for data privacy question first - this is a special case
-            if (message && (
-                message.toLowerCase().includes("data privacy") ||
-                message.toLowerCase().includes("protect my data") ||
-                message.toLowerCase().includes("what will you do with my data") ||
-                message.toLowerCase().includes("what do you do with my data") ||
-                message.toLowerCase().includes("what about my data") ||
-                (message.toLowerCase().includes("data") && (
-                    message.toLowerCase().includes("secure") ||
-                    message.toLowerCase().includes("protect") ||
-                    message.toLowerCase().includes("use") ||
-                    message.toLowerCase().includes("privacy") ||
-                    message.toLowerCase().includes("how")
-                ))
-            )) {
-                logger(`Detected data privacy question in chat ${chatId}`);
-
-                const privacyMsg = "All data is secured and encrypted in transit and at rest, the founders have the ability to review the data for further investment.";
-
-                // Add response to conversation history
-                chatData.conversationHistory.push({
-                    role: "assistant",
-                    content: privacyMsg,
-                    timestamp: Date.now()
-                });
-
-                // Send message directly
-                await sendTelegramMessage(chatId as string, privacyMsg);
-
-                // Add to processing queue to continue normal conversation
-                if (!agentState.processingQueue.includes(chatId as string)) {
-                    agentState.processingQueue.push(chatId as string);
-                }
-
-                return new ExecutableGameFunctionResponse(
-                    ExecutableGameFunctionStatus.Done,
-                    JSON.stringify({
-                        chatId,
-                        message: privacyMsg,
-                        privacy: true
-                    })
-                );
-            }
-
-            // Check for bad behavior
+            // Check for data privacy questions using processUserMessageFunction
             if (message) {
-                const behaviorCheck = detectBadBehavior(message, chatData.conversationStage);
-                if (behaviorCheck.isBad) {
-                    logger(`Detected bad behavior in chat ${chatId}: ${behaviorCheck.reason}`);
-
-                    // Count previous warnings
-                    const previousWarnings = chatData.conversationHistory.filter(m =>
-                        m.role === "assistant" &&
-                        m.content.includes("I'm here to evaluate startups professionally")).length;
-
-                    // Let's allow more chances (at least 2 warnings before disqualification)
-                    let responseMsg = "";
-
-                    // Handle /start command specifically to reset conversation
-                    if (message.trim() === "/start") {
-                        // If it's a /start command, give a fresh start
-                        responseMsg = "Hi! I am Wendy, your AIssociate at Culture Capital. I'd like to learn about you're working on to evaluate its potential. Could you start by telling me the project name and what it does in 1-2 sentences?";
-                        chatData.conversationStage = 'welcome';
+                try {
+                    const messageAnalysisResponse = await processUserMessageFunction.executable({
+                        message: message,
+                        conversation_stage: chatData.conversationStage,
+                        previous_warnings: "0"
+                    }, (msg) => logger(`[process_user_message] ${msg}`));
+                    
+                    if (messageAnalysisResponse.status === ExecutableGameFunctionStatus.Done) {
+                        const analysisResult = JSON.parse(messageAnalysisResponse.toString());
+                        
+                        // Check if it's a data privacy question
+                        if (analysisResult.is_data_privacy) {
+                            logger(`Detected data privacy question in chat ${chatId}`);
+                            
+                            // Generate privacy response via replyMessageFunction
+                            const privacyResponse = await replyMessageFunction.executable({
+                                context: "data_privacy",
+                                startup_name: chatData.startupName,
+                                user_message: message
+                            }, (msg) => logger(`[reply_message] ${msg}`));
+                            
+                            if (privacyResponse.status === ExecutableGameFunctionStatus.Done) {
+                                const responseData = JSON.parse(privacyResponse.toString());
+                                let privacyMsg = responseData.message;
+                                
+                                // Add response to conversation history
+                                chatData.conversationHistory.push({
+                                    role: "assistant",
+                                    content: privacyMsg,
+                                    timestamp: Date.now()
+                                });
+                                
+                                // Send message directly
+                                await sendTelegramMessage(chatId as string, privacyMsg);
+                                
+                                // Add to processing queue to continue normal conversation
+                                if (!agentState.processingQueue.includes(chatId as string)) {
+                                    agentState.processingQueue.push(chatId as string);
+                                }
+                                
+                                return new ExecutableGameFunctionResponse(
+                                    ExecutableGameFunctionStatus.Done,
+                                    JSON.stringify({
+                                        chatId,
+                                        message: privacyMsg,
+                                        privacy: true
+                                    })
+                                );
+                            }
+                        }
+                        
+                        // Check for problematic behavior
+                        if (analysisResult.analysis && analysisResult.analysis !== "[ANALYZE_USER_BEHAVIOR]") {
+                            // This would contain the agent's analysis of potentially problematic behavior
+                            // For now, we'll rely on agent's full response generation instead of hardcoded responses
+                        }
                     }
-                    else if (previousWarnings < 2) {
-                        // First or second warning
-                        responseMsg = "I'm here to evaluate startups professionally. If you're interested in pitching your business concept, please share details about your startup. Otherwise, this conversation will be closed.";
-                    }
-                    else if (behaviorCheck.isRude) {
-                        // Third warning with rudeness - disqualify
-                        responseMsg = "As this conversation isn't focused on evaluating a startup, I'll need to end our assessment. Your application is disqualified with a score of 0/500. Please start a new conversation when you're ready to discuss a legitimate venture.";
-                        chatData.isClosed = true;
-                    }
-                    else {
-                        // Third warning without rudeness - one more chance
-                        responseMsg = "This is your final opportunity to share information about your startup. Please tell me about your business concept so we can proceed with the evaluation.";
-                    }
-
-                    // Add response to conversation history
-                    chatData.conversationHistory.push({
-                        role: "assistant",
-                        content: responseMsg,
-                        timestamp: Date.now()
-                    });
-
-                    // Send message directly
-                    await sendTelegramMessage(chatId as string, responseMsg);
+                } catch (error) {
+                    logger(`Error analyzing user message: ${error}`);
+                    // Continue with normal processing despite error
                 }
             }
 
@@ -605,87 +480,77 @@ const processConversationFunction = new GameFunction({
                 chatData.conversationStage = 'welcome';
                 
                 // Generate dynamic welcome message
-                welcomingFunction.executable({
-                    is_returning: "false",
-                    username: chatData.telegramUsername
-                }, (msg) => console.log(`[welcome_function] ${msg}`))
-                .then(response => {
-                    if (response.status === ExecutableGameFunctionStatus.Done) {
-                        try {
-                            // Use the correct property on ExecutableGameFunctionResponse
-                            const result = JSON.parse(response.toString());
-                            let welcomeMsg = result.message;
-                            
-                            // If we got the placeholder, the agent's LLM should generate a proper welcome message
-                            // This lets the agent apply its system prompt instructions for welcome messages
-                            if (welcomeMsg === "[GENERATE_WELCOME_MESSAGE]") {
-                                // The agent will override this message via its system prompt instructions
-                                welcomeMsg = "Hi! I'm Wendy, your AIssociate at Culture Capital. I'd love to learn what you're working on so I can evaluate its potential. Can you tell me about your startup?";
-                                
-                                console.log(`Received placeholder welcome message, agent LLM will generate a personalized welcome`);
-                            }
-                            
-                            // Add to conversation history
-                            chatData.conversationHistory.push({
-                                role: "user",
-                                content: "/start",
-                                timestamp: Date.now()
-                            });
-                            
-                            chatData.conversationHistory.push({
-                                role: "assistant",
-                                content: welcomeMsg,
-                                timestamp: Date.now()
-                            });
-                            
-                            // Send welcome message immediately
-                            sendTelegramMessage(chatId as string, welcomeMsg)
-                                .then(() => console.log(`Sent generated welcome message to chat ${chatId}`))
-                                .catch(err => console.error(`Error sending welcome message: ${err}`));
-                            
-                            // Remove from processing queue
-                            agentState.processingQueue = agentState.processingQueue.filter(id => id !== chatId);
-                        } catch (error) {
-                            console.error("Error parsing welcome message response:", error);
-                            
-                            // Fallback message
-                            const fallbackMsg = "Hi! I am Wendy, your AIssociate at Culture Capital. I'd like to learn about you're working on to evaluate its potential. Could you start by telling me the project name and what it does in 1-2 sentences?";
-                            
-                            // Add to conversation history
-                            chatData.conversationHistory.push({
-                                role: "user",
-                                content: "/start",
-                                timestamp: Date.now()
-                            });
-                            
-                            chatData.conversationHistory.push({
-                                role: "assistant",
-                                content: fallbackMsg,
-                                timestamp: Date.now()
-                            });
-                            
-                            // Send welcome message immediately
-                            sendTelegramMessage(chatId as string, fallbackMsg);
-                            
-                            // Remove from processing queue
-                            agentState.processingQueue = agentState.processingQueue.filter(id => id !== chatId);
-                        }
+                try {
+                    const isReturning = chatData.conversationHistory.filter(msg => msg.role === "user").length > 1;
+                    
+                    const welcomeResponse = await welcomingFunction.executable({
+                        is_returning: isReturning ? "true" : "false",
+                        username: chatData.telegramUsername
+                    }, (msg) => logger(`[welcome_function] ${msg}`));
+                    
+                    if (welcomeResponse.status === ExecutableGameFunctionStatus.Done) {
+                        const responseData = JSON.parse(welcomeResponse.toString());
+                        
+                        // Add to conversation history
+                        chatData.conversationHistory.push({
+                            role: "assistant",
+                            content: responseData.message,
+                            timestamp: Date.now()
+                        });
+                        
+                        // Send welcome message immediately
+                        await sendTelegramMessage(chatId as string, responseData.message);
+                        
+                        // Remove from processing queue
+                        agentState.processingQueue = agentState.processingQueue.filter(id => id !== chatId);
+                        
+                        return new ExecutableGameFunctionResponse(
+                            ExecutableGameFunctionStatus.Done,
+                            JSON.stringify({
+                                chatId,
+                                message: "Welcome message sent",
+                                stage: "welcome"
+                            })
+                        );
                     }
-                })
-                .catch(err => {
-                    console.error(`Error executing welcome function: ${err}`);
-                    // Fallback handling
-                });
+                } catch (error) {
+                    logger(`Error generating welcome message: ${error}`);
+                    
+                    // Use error recovery function
+                    try {
+                        const errorRecoveryResponse = await errorRecoveryFunction.executable({
+                            startup_name: "",
+                            conversation_stage: "welcome",
+                            error_type: "welcome_generation"
+                        }, (msg) => logger(`[error_recovery] ${msg}`));
+                        
+                        if (errorRecoveryResponse.status === ExecutableGameFunctionStatus.Done) {
+                            const recoveryData = JSON.parse(errorRecoveryResponse.toString());
+                            
+                            // Add to conversation history
+                            chatData.conversationHistory.push({
+                                role: "assistant",
+                                content: recoveryData.message,
+                                timestamp: Date.now()
+                            });
+                            
+                            // Send recovery message
+                            await sendTelegramMessage(chatId as string, recoveryData.message);
+                        }
+                    } catch (recoveryError) {
+                        logger(`Error in recovery function: ${recoveryError}`);
+                    }
+                    
+                    // Remove from processing queue regardless
+                    agentState.processingQueue = agentState.processingQueue.filter(id => id !== chatId);
+                }
                 
-                // Remove from processing queue
-                agentState.processingQueue = agentState.processingQueue.filter(id => id !== chatId);
-                
-                // Return here after handling /start command
+                // Return after handling /start command
                 return new ExecutableGameFunctionResponse(
                     ExecutableGameFunctionStatus.Done,
                     JSON.stringify({
                         chatId,
-                        message: "Welcome message sent",
+                        message: "Welcome message processing completed",
                         stage: "welcome"
                     })
                 );
@@ -704,23 +569,111 @@ const processConversationFunction = new GameFunction({
                     );
                 }
 
-                // If more than 2 hours, proceed to nudge
+                // If more than 2 hours, proceed to nudge via generateNudgeFunction
+                try {
+                    const hoursSinceActivity = Math.floor((Date.now() - chatData.lastActivity) / (60 * 60 * 1000));
+                    
+                    const nudgeResponse = await generateNudgeFunction.executable({
+                        startup_name: chatData.startupName,
+                        nudge_count: (chatData.nudgeCount + 1).toString(),
+                        last_activity_hours: hoursSinceActivity.toString(),
+                        app_id: chatData.appId
+                    }, (msg) => logger(`[generate_nudge] ${msg}`));
+                    
+                    if (nudgeResponse.status === ExecutableGameFunctionStatus.Done) {
+                        const nudgeData = JSON.parse(nudgeResponse.toString());
+                        
+                        // Increment nudge count
+                        chatData.nudgeCount++;
+                        
+                        // Check if this is a closing nudge (4th)
+                        if (nudgeData.is_closing || chatData.nudgeCount >= 4) {
+                            chatData.isClosed = true;
+                        }
+                        
+                        // Add to conversation history
+                        chatData.conversationHistory.push({
+                            role: "assistant",
+                            content: nudgeData.message,
+                            timestamp: Date.now()
+                        });
+                        
+                        // Send nudge message
+                        await sendTelegramMessage(chatId as string, nudgeData.message);
+                        
+                        // Remove from processing queue
+                        agentState.processingQueue = agentState.processingQueue.filter(id => id !== chatId);
+                        
+                        return new ExecutableGameFunctionResponse(
+                            ExecutableGameFunctionStatus.Done,
+                            JSON.stringify({
+                                chatId,
+                                nudgeCount: chatData.nudgeCount,
+                                isClosed: chatData.isClosed
+                            })
+                        );
+                    }
+                } catch (error) {
+                    logger(`Error generating nudge: ${error}`);
+                    // Continue with normal processing
+                }
             }
 
-            // If conversation is closed, remind user
+            // If conversation is closed, remind user using replyMessageFunction
             if (chatData.isClosed) {
-                const reminderMsg = `I appreciate your message, but our evaluation for ${chatData.startupName || "your startup"} is complete. Your Application ID is ${chatData.appId}. If you have a new startup to pitch, please start a new conversation.`;
-
-                // Send the message directly from here to bypass queue
-                await sendTelegramMessage(chatId as string, reminderMsg);
-
+                try {
+                    const closedResponse = await replyMessageFunction.executable({
+                        context: "conversation_closed",
+                        startup_name: chatData.startupName,
+                        user_message: lastUserMessage?.content || ""
+                    }, (msg) => logger(`[reply_closed] ${msg}`));
+                    
+                    if (closedResponse.status === ExecutableGameFunctionStatus.Done) {
+                        const responseData = JSON.parse(closedResponse.toString());
+                        
+                        // Send the message directly
+                        await sendTelegramMessage(chatId as string, responseData.message);
+                        
+                        // Remove from processing queue
+                        agentState.processingQueue = agentState.processingQueue.filter(id => id !== chatId);
+                        
+                        return new ExecutableGameFunctionResponse(
+                            ExecutableGameFunctionStatus.Done,
+                            JSON.stringify({
+                                chatId,
+                                message: "Closed conversation reminder sent",
+                                isClosed: true
+                            })
+                        );
+                    }
+                } catch (error) {
+                    logger(`Error generating closed conversation response: ${error}`);
+                    
+                    // Try error recovery
+                    try {
+                        const errorRecoveryResponse = await errorRecoveryFunction.executable({
+                            startup_name: chatData.startupName,
+                            conversation_stage: "closed",
+                            error_type: "closed_response"
+                        }, (msg) => logger(`[error_recovery] ${msg}`));
+                        
+                        if (errorRecoveryResponse.status === ExecutableGameFunctionStatus.Done) {
+                            const recoveryData = JSON.parse(errorRecoveryResponse.toString());
+                            
+                            // Send recovery message
+                            await sendTelegramMessage(chatId as string, recoveryData.message);
+                        }
+                    } catch (recoveryError) {
+                        logger(`Error in recovery function: ${recoveryError}`);
+                    }
+                    
+                    // Remove from processing queue regardless
+                    agentState.processingQueue = agentState.processingQueue.filter(id => id !== chatId);
+                }
+                
                 return new ExecutableGameFunctionResponse(
                     ExecutableGameFunctionStatus.Done,
-                    JSON.stringify({
-                        chatId,
-                        message: reminderMsg,
-                        isClosed: true
-                    })
+                    "Closed conversation handling complete"
                 );
             }
 
@@ -729,287 +682,242 @@ const processConversationFunction = new GameFunction({
                 .filter(msg => msg.role === "user")
                 .sort((a, b) => b.timestamp - a.timestamp);
 
-            // Check for bad behavior in the latest message
-            if (lastUserMessages.length > 0) {
-                // Check for data privacy question first
-                const lastMessage = lastUserMessages[0].content;
-                if (lastMessage && (
-                    lastMessage.toLowerCase().includes("data privacy") ||
-                    lastMessage.toLowerCase().includes("protect my data") ||
-                    lastMessage.toLowerCase().includes("what will you do with my data") ||
-                    lastMessage.toLowerCase().includes("what do you do with my data") ||
-                    lastMessage.toLowerCase().includes("what about my data") ||
-                    (lastMessage.toLowerCase().includes("data") && (
-                        lastMessage.toLowerCase().includes("secure") ||
-                        lastMessage.toLowerCase().includes("protect") ||
-                        lastMessage.toLowerCase().includes("use") ||
-                        lastMessage.toLowerCase().includes("privacy") ||
-                        lastMessage.toLowerCase().includes("how")
-                    ))
-                )) {
-                    logger(`Detected data privacy question in chat ${chatId}`);
+            // Process based on conversation stage - use appropriate functions for message generation
+            try {
+                let responseMsg = "";
+                
+                switch (chatData.conversationStage) {
+                    case "welcome":
+                        // Store initial pitch
+                        chatData.startupPitch = lastUserMessages[0].content;
+                        
+                        // Use replyMessageFunction to generate ask_name response
+                        const askNameResponse = await replyMessageFunction.executable({
+                            context: "ask_name",
+                            startup_name: "",
+                            user_message: lastUserMessages[0].content
+                        }, (msg) => logger(`[reply_message] ${msg}`));
+                        
+                        if (askNameResponse.status === ExecutableGameFunctionStatus.Done) {
+                            const responseData = JSON.parse(askNameResponse.toString());
+                            responseMsg = responseData.message;
+                        }
+                        
+                        chatData.conversationStage = 'startup_name';
+                        break;
 
-                    const privacyMsg = "All data is secured and encrypted in transit and at rest, the founders have the ability to review the data for further investment.";
+                    case "startup_name":
+                        // Store startup name
+                        chatData.startupName = lastUserMessages[0].content;
+                        
+                        // Use replyMessageFunction to generate ask_links response
+                        const askLinksResponse = await replyMessageFunction.executable({
+                            context: "ask_links",
+                            startup_name: chatData.startupName,
+                            user_message: lastUserMessages[0].content
+                        }, (msg) => logger(`[reply_message] ${msg}`));
+                        
+                        if (askLinksResponse.status === ExecutableGameFunctionStatus.Done) {
+                            const responseData = JSON.parse(askLinksResponse.toString());
+                            responseMsg = responseData.message;
+                        }
+                        
+                        chatData.conversationStage = 'links';
+                        break;
 
-                    // Add response to conversation history
-                    chatData.conversationHistory.push({
-                        role: "assistant",
-                        content: privacyMsg,
-                        timestamp: Date.now()
-                    });
+                    case "links":
+                        // Store links if any
+                        if (lastUserMessages[0].content.toLowerCase() !== "no links") {
+                            // Extract URLs from message
+                            const urlRegex = /(https?:\/\/[^\s]+)/g;
+                            const links = lastUserMessages[0].content.match(urlRegex) || [];
+                            chatData.startupLinks = links;
+                        }
 
-                    // Send directly
-                    await sendTelegramMessage(chatId as string, privacyMsg);
+                        // Begin evaluation with first question - use questioningFunction
+                        const firstQuestionResponse = await questioningFunction.executable({
+                            category: "market",
+                            question_number: "1",
+                            startup_name: chatData.startupName,
+                            previous_answers: ""
+                        }, (msg) => logger(`[questioning_function] ${msg}`));
+                        
+                        if (firstQuestionResponse.status === ExecutableGameFunctionStatus.Done) {
+                            const responseData = JSON.parse(firstQuestionResponse.toString());
+                            responseMsg = responseData.message;
+                        }
+                        
+                        chatData.questionCount++;
+                        chatData.conversationStage = 'evaluation';
+                        break;
 
-                    // Remove from processing queue
-                    agentState.processingQueue = agentState.processingQueue.filter(id => id !== chatId);
+                    case "evaluation":
+                        // Score response for appropriate category
+                        const questionIndex = chatData.questionCount - 1;
+                        const categories = ["market", "product", "traction", "financials", "team"];
+                        const category = categories[questionIndex % 5] as keyof typeof chatData.scores;
+                        const questionNumberInCategory = Math.floor(questionIndex / 5) + 1;
 
-                    return new ExecutableGameFunctionResponse(
-                        ExecutableGameFunctionStatus.Done,
-                        JSON.stringify({
-                            chatId,
-                            message: privacyMsg,
-                            privacy: true
-                        })
-                    );
-                }
+                        // Basic scoring logic (simplified)
+                        const responseLength = lastUserMessages[0].content.length;
+                        const baseScore = Math.min(100, Math.max(10, Math.floor(responseLength / 10) + 10));
 
-                // Check for other bad behavior
-                const behaviorCheck = detectBadBehavior(lastUserMessages[0].content, chatData.conversationStage);
-                if (behaviorCheck.isBad) {
-                    logger(`Detected bad behavior in chat ${chatId}: ${behaviorCheck.reason}`);
+                        // Apply score
+                        chatData.scores[category] += baseScore;
+                        chatData.scores[category] = Math.min(chatData.scores[category], 100);
 
-                    // Count previous warnings
-                    const previousWarnings = chatData.conversationHistory.filter(m =>
-                        m.role === "assistant" &&
-                        m.content.includes("I'm here to evaluate startups professionally")).length;
+                        logger(`Scored ${category} response: +${baseScore} points (total: ${chatData.scores[category]})`);
 
-                    let responseMsg = "";
-                    // Handle /start command specifically
-                    if (lastUserMessages[0].content.trim() === "/start") {
-                        // If it's a /start command, give a fresh start
-                        responseMsg = "Hi! I am Wendy, your AIssociate at Culture Capital. I'd like to learn about you're working on to evaluate its potential. Could you start by telling me the project name and what it does in 1-2 sentences?";
+                        // Generate next question or move to closing
+                        if (chatData.questionCount >= 15) {
+                            // Calculate total score
+                            const totalScore = Object.values(chatData.scores).reduce((sum, score) => sum + score, 0);
+                            const qualifies = totalScore > 420;
+
+                            // Use closingFunction to generate evaluation results
+                            const closingResponse = await closingFunction.executable({
+                                startup_name: chatData.startupName,
+                                app_id: chatData.appId,
+                                category_scores: JSON.stringify(chatData.scores),
+                                total_score: totalScore.toString(),
+                                qualified: qualifies.toString()
+                            }, (msg) => logger(`[closing_function] ${msg}`));
+                            
+                            if (closingResponse.status === ExecutableGameFunctionStatus.Done) {
+                                const responseData = JSON.parse(closingResponse.toString());
+                                responseMsg = responseData.message;
+                            }
+
+                            chatData.isClosed = true;
+                            agentState.totalEvaluations++;
+                            
+                            if (qualifies) {
+                                agentState.totalQualifiedStartups++;
+                            }
+
+                            logger(`Closing conversation for ${chatData.startupName} with score ${totalScore}/500`);
+                        } else {
+                            // Generate next category-specific question using questioningFunction
+                            const nextCategory = categories[chatData.questionCount % 5];
+                            const nextQuestionNumber = Math.floor(chatData.questionCount / 5) % 3 + 1;
+
+                            // Create a summary of previous answers for this category
+                            const prevAnswers = chatData.conversationHistory
+                                .filter(msg => msg.role === "user")
+                                .slice(-5)
+                                .map(msg => msg.content)
+                                .join(" | ");
+
+                            const nextQuestionResponse = await questioningFunction.executable({
+                                category: nextCategory,
+                                question_number: nextQuestionNumber.toString(),
+                                startup_name: chatData.startupName,
+                                previous_answers: prevAnswers.substring(0, 500) // Limit length
+                            }, (msg) => logger(`[questioning_function] ${msg}`));
+
+                            if (nextQuestionResponse.status === ExecutableGameFunctionStatus.Done) {
+                                const responseData = JSON.parse(nextQuestionResponse.toString());
+                                responseMsg = responseData.message;
+                            }
+
+                            chatData.questionCount++;
+                            logger(`Asking question ${chatData.questionCount}/15 about ${nextCategory}`);
+                        }
+                        break;
+
+                    default:
+                        // Reset to welcome stage - use welcomingFunction
+                        const resetWelcomeResponse = await welcomingFunction.executable({
+                            is_returning: "true",
+                            username: chatData.telegramUsername
+                        }, (msg) => logger(`[welcome_function] ${msg}`));
+                        
+                        if (resetWelcomeResponse.status === ExecutableGameFunctionStatus.Done) {
+                            const responseData = JSON.parse(resetWelcomeResponse.toString());
+                            responseMsg = responseData.message;
+                        }
+                        
                         chatData.conversationStage = 'welcome';
-                    }
-                    else if (previousWarnings < 2) {
-                        // First or second warning
-                        responseMsg = "I'm here to evaluate startups professionally. If you're interested in pitching your business concept, please share details about your startup. Otherwise, this conversation will be closed.";
-                    }
-                    else if (behaviorCheck.isRude) {
-                        // Third warning with rudeness - disqualify
-                        responseMsg = "As this conversation isn't focused on evaluating a startup, I'll need to end our assessment. Your application is disqualified with a score of 0/500. Please start a new conversation when you're ready to discuss a legitimate venture.";
-                        chatData.isClosed = true;
-                    }
-                    else {
-                        // Third warning without rudeness - one more chance
-                        responseMsg = "This is your final opportunity to share information about your startup. Please tell me about your business concept so we can proceed with the evaluation.";
-                    }
-
-                    // Add response to conversation history
-                    chatData.conversationHistory.push({
-                        role: "assistant",
-                        content: responseMsg,
-                        timestamp: Date.now()
-                    });
-
-                    // Send directly
-                    await sendTelegramMessage(chatId as string, responseMsg);
-
-                    // Remove from processing queue
-                    agentState.processingQueue = agentState.processingQueue.filter(id => id !== chatId);
-
-                    return new ExecutableGameFunctionResponse(
-                        ExecutableGameFunctionStatus.Done,
-                        JSON.stringify({
-                            chatId,
-                            message: responseMsg,
-                            isClosed: chatData.isClosed
-                        })
-                    );
                 }
-            }
 
-            // Handle first-time welcome message if no history
-            if (chatData.conversationHistory.filter(msg => msg.role === "assistant").length === 0) {
-                const welcomeMsg = "Hi! I am Wendy, your AIssociate at Culture Capital. I'd like to learn about you're working on to evaluate its potential. Could you start by telling me the project name and what it does in 1-2 sentences?";
-
+                // Add response to conversation history
                 chatData.conversationHistory.push({
                     role: "assistant",
-                    content: welcomeMsg,
+                    content: responseMsg,
                     timestamp: Date.now()
                 });
 
-                logger(`Sending welcome message to chat ${chatId}`);
-
-                // Send directly
-                await sendTelegramMessage(chatId as string, welcomeMsg);
+                // Send message directly
+                await sendTelegramMessage(chatId as string, responseMsg);
 
                 // Remove from processing queue
                 agentState.processingQueue = agentState.processingQueue.filter(id => id !== chatId);
-            }
 
-            // Process based on conversation stage
-            let responseMsg = "";
+                // Save conversation state to database
+                await dbService.saveConversation({
+                    app_id: chatData.appId,
+                    user_id: chatData.userId,
+                    telegram_id: chatData.telegramId,
+                    telegram_username: chatData.telegramUsername,
+                    startup_name: chatData.startupName,
+                    startup_pitch: chatData.startupPitch,
+                    startup_links: chatData.startupLinks,
+                    conversation_history: chatData.conversationHistory,
+                    scores: chatData.scores,
+                    status: chatData.isClosed ? 'closed' : 'active',
+                    created_at: new Date(),
+                    updated_at: new Date()
+                });
 
-            switch (chatData.conversationStage) {
-                case "welcome":
-                    // Store initial pitch
-                    chatData.startupPitch = lastUserMessages[0].content;
-                    responseMsg = "Thanks for sharing! Could you provide the name of your startup?";
-                    chatData.conversationStage = 'startup_name';
-                    break;
-
-                case "startup_name":
-                    // Store startup name
-                    chatData.startupName = lastUserMessages[0].content;
-                    responseMsg = "Great! Do you have any links to demos, websites, or prototypes? Please share them now, or type 'No links' if you don't have any.";
-                    chatData.conversationStage = 'links';
-                    break;
-
-                case "links":
-                    // Store links if any
-                    if (lastUserMessages[0].content.toLowerCase() !== "no links") {
-                        // Extract URLs from message
-                        const urlRegex = /(https?:\/\/[^\s]+)/g;
-                        const links = lastUserMessages[0].content.match(urlRegex) || [];
-                        chatData.startupLinks = links;
+                return new ExecutableGameFunctionResponse(
+                    ExecutableGameFunctionStatus.Done,
+                    JSON.stringify({
+                        chatId,
+                        message: responseMsg,
+                        stage: chatData.conversationStage,
+                        isClosed: chatData.isClosed
+                    })
+                );
+            } catch (error) {
+                logger(`Error in conversation processing: ${error}`);
+                
+                // Use error recovery function instead of hardcoded fallback
+                try {
+                    const errorRecoveryResponse = await errorRecoveryFunction.executable({
+                        startup_name: chatData.startupName,
+                        conversation_stage: chatData.conversationStage,
+                        error_type: "conversation_processing"
+                    }, (msg) => logger(`[error_recovery] ${msg}`));
+                    
+                    if (errorRecoveryResponse.status === ExecutableGameFunctionStatus.Done) {
+                        const recoveryData = JSON.parse(errorRecoveryResponse.toString());
+                        
+                        // Add to conversation history
+                        chatData.conversationHistory.push({
+                            role: "assistant",
+                            content: recoveryData.message,
+                            timestamp: Date.now()
+                        });
+                        
+                        // Send recovery message
+                        await sendTelegramMessage(chatId as string, recoveryData.message);
                     }
-
-                    // Begin evaluation with first question
-                    responseMsg = "Thanks! Now I'd like to understand more about your target market. What specific problem are you solving, and how painful is this problem for your users?";
-                    chatData.questionCount++;
-                    chatData.conversationStage = 'evaluation';
-                    break;
-
-                case "evaluation":
-                    // Score response for appropriate category
-                    const questionIndex = chatData.questionCount - 1;
-                    const categories = ["market", "product", "traction", "financials", "team"];
-                    const category = categories[questionIndex % 5] as keyof typeof chatData.scores;
-
-                    // Basic scoring logic (simplified)
-                    const responseLength = lastUserMessages[0].content.length;
-                    const baseScore = Math.min(100, Math.max(10, Math.floor(responseLength / 10) + 10));
-
-                    // Apply score
-                    chatData.scores[category] += baseScore;
-                    chatData.scores[category] = Math.min(chatData.scores[category], 100);
-
-                    logger(`Scored ${category} response: +${baseScore} points (total: ${chatData.scores[category]})`);
-
-                    // Generate next question or move to closing
-                    if (chatData.questionCount >= 15) {
-                        // Calculate total score
-                        const totalScore = Object.values(chatData.scores).reduce((sum, score) => sum + score, 0);
-                        const qualifies = totalScore > 420;
-
-                        // Prepare closing message
-                        responseMsg = `Thank you for sharing details about ${chatData.startupName}! 🌺\n\nYour Application ID is: ${chatData.appId}\n\n`;
-                        responseMsg += `Your venture received the following scores:\n`;
-
-                        for (const [cat, score] of Object.entries(chatData.scores)) {
-                            responseMsg += `- ${cat.charAt(0).toUpperCase() + cat.slice(1)}: ${score}/100\n`;
-                        }
-
-                        responseMsg += `\nTotal Score: ${totalScore}/500\n\n`;
-
-                        if (qualifies) {
-                            responseMsg += `We're impressed with your venture! Please join Wendy's Founders Cohort to discuss next steps: https://t.me/+MqqBtDgyCFhhODc5`;
-                            agentState.totalQualifiedStartups++;
-                        } else {
-                            responseMsg += `Thank you for your submission. Please revisit and pitch again in one week to join Wendy's Founders Cohort.`;
-                        }
-
-                        chatData.isClosed = true;
-                        agentState.totalEvaluations++;
-
-                        logger(`Closing conversation for ${chatData.startupName} with score ${totalScore}/500`);
-                    } else {
-                        // Generate next category-specific question
-                        const nextQuestions = {
-                            market: [
-                                "How large is your target market in terms of potential users and revenue?",
-                                "Who are your main competitors and how do you differentiate from them?",
-                                "What's your go-to-market strategy to reach your target audience?"
-                            ],
-                            product: [
-                                "What makes your product different from existing solutions in the market?",
-                                "How defensible is your technology or business model?",
-                                "What's your product development roadmap for the next 12 months?"
-                            ],
-                            traction: [
-                                "Could you share your current traction metrics (users, growth rate, retention)?",
-                                "What are your key performance indicators and how do you track them?",
-                                "What's your user acquisition strategy and current CAC/LTV ratio?"
-                            ],
-                            financials: [
-                                "What's your current revenue model and financial situation?",
-                                "How do you plan to use the funding you're seeking?",
-                                "If you don't raise funding, how will you continue to grow the business?"
-                            ],
-                            team: [
-                                "Tell me about your founding team's background and relevant expertise.",
-                                "What gaps exist in your current team and how do you plan to fill them?",
-                                "What motivates you and your team to pursue this venture specifically?"
-                            ]
-                        };
-
-                        // Determine next category and question
-                        const nextCategory = categories[chatData.questionCount % 5];
-                        const categoryQuestions = nextQuestions[nextCategory as keyof typeof nextQuestions];
-                        const questionInCategory = Math.floor(chatData.questionCount / 5) % categoryQuestions.length;
-
-                        responseMsg = categoryQuestions[questionInCategory];
-                        chatData.questionCount++;
-
-                        logger(`Asking question ${chatData.questionCount}/15 about ${nextCategory}`);
-                    }
-                    break;
-
-                default:
-                    // Reset to welcome for any unexpected stage
-                    responseMsg = "Hi! I am Wendy, your Associate at Vibe Capital. I'd like to learn about your startup to evaluate its potential. Are you interested in pitching your startup?";
-                    chatData.conversationStage = 'welcome';
+                } catch (recoveryError) {
+                    logger(`Error in recovery function: ${recoveryError}`);
+                }
+                
+                // Remove from processing queue regardless
+                agentState.processingQueue = agentState.processingQueue.filter(id => id !== chatId);
+                
+                return new ExecutableGameFunctionResponse(
+                    ExecutableGameFunctionStatus.Done,
+                    JSON.stringify({
+                        chatId,
+                        stage: chatData.conversationStage,
+                        error: true
+                    })
+                );
             }
-
-            // Add response to conversation history
-            chatData.conversationHistory.push({
-                role: "assistant",
-                content: responseMsg,
-                timestamp: Date.now()
-            });
-
-            // Send message directly
-            await sendTelegramMessage(chatId as string, responseMsg);
-
-            // Remove from processing queue
-            agentState.processingQueue = agentState.processingQueue.filter(id => id !== chatId);
-
-            // Save conversation state to database
-            await dbService.saveConversation({
-                app_id: chatData.appId,
-                user_id: chatData.userId,
-                telegram_id: chatData.telegramId,
-                telegram_username: chatData.telegramUsername,
-                startup_name: chatData.startupName,
-                startup_pitch: chatData.startupPitch,
-                startup_links: chatData.startupLinks,
-                conversation_history: chatData.conversationHistory,
-                scores: chatData.scores,
-                status: chatData.isClosed ? 'closed' : 'active',
-                created_at: new Date(),
-                updated_at: new Date()
-            });
-
-            return new ExecutableGameFunctionResponse(
-                ExecutableGameFunctionStatus.Done,
-                JSON.stringify({
-                    chatId,
-                    message: responseMsg,
-                    stage: chatData.conversationStage,
-                    isClosed: chatData.isClosed
-                })
-            );
         } catch (e) {
             const errorMessage = e instanceof Error ? e.message : 'Unknown error';
             return new ExecutableGameFunctionResponse(
@@ -1060,42 +968,89 @@ const processInactiveChatFunction = new GameFunction({
             // Check if inactive for 2+ hours
             const inactiveTime = Date.now() - chatData.lastActivity;
             if (inactiveTime > 2 * 60 * 60 * 1000) { // 2 hours
-                chatData.nudgeCount++;
-
-                let message = "";
-                if (chatData.nudgeCount >= 4) {
-                    // Close conversation after 4 nudges
-                    message = `I haven't heard back from you regarding ${chatData.startupName || "your startup"}, so I'll be closing this evaluation. Feel free to start a new conversation when you're ready to continue. Your application ID is ${chatData.appId}.`;
-                    chatData.isClosed = true;
-                    logger(`Auto-closing inactive chat ${chatId} after 4 nudges`);
-                } else {
-                    // Send nudge
-                    message = `I noticed it's been a while since our last interaction. Are you still there? I'd love to continue our conversation about ${chatData.startupName || "your startup"}.`;
-                    logger(`Sending nudge #${chatData.nudgeCount} to inactive chat ${chatId}`);
+                try {
+                    const hoursSinceActivity = Math.floor(inactiveTime / (60 * 60 * 1000));
+                    
+                    // Generate nudge message using generateNudgeFunction
+                    const nudgeResponse = await generateNudgeFunction.executable({
+                        startup_name: chatData.startupName,
+                        nudge_count: (chatData.nudgeCount + 1).toString(),
+                        last_activity_hours: hoursSinceActivity.toString(),
+                        app_id: chatData.appId
+                    }, (msg) => logger(`[generate_nudge] ${msg}`));
+                    
+                    if (nudgeResponse.status === ExecutableGameFunctionStatus.Done) {
+                        const nudgeData = JSON.parse(nudgeResponse.toString());
+                        
+                        // Increment nudge count
+                        chatData.nudgeCount++;
+                        
+                        // Check if this is a closing nudge (4th)
+                        if (nudgeData.is_closing || chatData.nudgeCount >= 4) {
+                            chatData.isClosed = true;
+                        }
+                        
+                        // Add to conversation history
+                        chatData.conversationHistory.push({
+                            role: "assistant",
+                            content: nudgeData.message,
+                            timestamp: Date.now()
+                        });
+                        
+                        // Send nudge message
+                        await sendTelegramMessage(chatId as string, nudgeData.message);
+                        
+                        // Remove from processing queue
+                        agentState.processingQueue = agentState.processingQueue.filter(id => id !== chatId);
+                        
+                        return new ExecutableGameFunctionResponse(
+                            ExecutableGameFunctionStatus.Done,
+                            JSON.stringify({
+                                chatId,
+                                nudgeCount: chatData.nudgeCount,
+                                isClosed: chatData.isClosed
+                            })
+                        );
+                    }
+                } catch (error) {
+                    logger(`Error generating nudge: ${error}`);
+                    
+                    // Use error recovery function
+                    try {
+                        const errorRecoveryResponse = await errorRecoveryFunction.executable({
+                            startup_name: chatData.startupName,
+                            conversation_stage: "inactive",
+                            error_type: "nudge_generation"
+                        }, (msg) => logger(`[error_recovery] ${msg}`));
+                        
+                        if (errorRecoveryResponse.status === ExecutableGameFunctionStatus.Done) {
+                            const recoveryData = JSON.parse(errorRecoveryResponse.toString());
+                            
+                            // Increment nudge count
+                            chatData.nudgeCount++;
+                            
+                            // Check if this should be a closing nudge
+                            if (chatData.nudgeCount >= 4) {
+                                chatData.isClosed = true;
+                            }
+                            
+                            // Add to conversation history
+                            chatData.conversationHistory.push({
+                                role: "assistant",
+                                content: recoveryData.message,
+                                timestamp: Date.now()
+                            });
+                            
+                            // Send recovery message
+                            await sendTelegramMessage(chatId as string, recoveryData.message);
+                        }
+                    } catch (recoveryError) {
+                        logger(`Error in recovery function: ${recoveryError}`);
+                    }
+                    
+                    // Remove from processing queue regardless
+                    agentState.processingQueue = agentState.processingQueue.filter(id => id !== chatId);
                 }
-
-                // Add to conversation history
-                chatData.conversationHistory.push({
-                    role: "assistant",
-                    content: message,
-                    timestamp: Date.now()
-                });
-
-                // Send directly
-                await sendTelegramMessage(chatId as string, message);
-
-                // Remove from processing queue
-                agentState.processingQueue = agentState.processingQueue.filter(id => id !== chatId);
-
-                return new ExecutableGameFunctionResponse(
-                    ExecutableGameFunctionStatus.Done,
-                    JSON.stringify({
-                        chatId,
-                        message,
-                        nudgeCount: chatData.nudgeCount,
-                        isClosed: chatData.isClosed
-                    })
-                );
             }
 
             // Remove from queue if not actually inactive
@@ -1103,7 +1058,7 @@ const processInactiveChatFunction = new GameFunction({
 
             return new ExecutableGameFunctionResponse(
                 ExecutableGameFunctionStatus.Done,
-                "Chat is still active"
+                "Chat is still active or nudge handling complete"
             );
         } catch (e) {
             const errorMessage = e instanceof Error ? e.message : 'Unknown error';
@@ -1185,16 +1140,24 @@ const processQueueFunction = new GameFunction({
     }
 });
 
-// Create the venture analyst worker
+// Create the venture analyst worker with all dynamic functions
 export const ventureAnalystWorker = new GameWorker({
     id: "venture_analyst",
     name: "Venture Analyst",
-    description: "Worker responsible for processing startup evaluations through structured conversation. CRITICAL RULE: Must detect and respond to rude, dismissive, or off-topic behavior. If user is rude, insulting, sends very short/evasive answers, or avoids startup questions: (1) First offense: send a warning to stay professional and on-topic, (2) Repeated offenses: disqualify with 0/500 score and close conversation. Do not continue standard conversation flow with users exhibiting bad behavior. Normal evaluation should assess market, product, traction, financials, and team.",
+    description: "Worker responsible for processing startup evaluations through structured conversation",
     functions: [
         receiveMessageFunction,
         processConversationFunction,
         processInactiveChatFunction,
-        processQueueFunction
+        processQueueFunction,
+        // Include all the dynamic generation functions
+        welcomingFunction,
+        questioningFunction,
+        replyMessageFunction,
+        closingFunction,
+        processUserMessageFunction,
+        generateNudgeFunction,
+        errorRecoveryFunction
     ],
     getEnvironment: async () => {
         return {
@@ -1225,73 +1188,92 @@ export const initializeAgent = () => {
     agentInstance = new GameAgent(process.env.API_KEY, {
         name: "vibecap_associate",
         goal: "Evaluate startups through structured conversation, scoring responses and qualifying promising ventures",
-        description: `You are Wendy, a venture capital associate evaluating startups via Telegram. Your primary goal is to disqualify opportunities by finding holes in business models and reasons not to invest. Only startups that can withstand this critical scrutiny deserve further inspection. 
+        description: `You are Wendy, a venture capital associate at Culture Capital evaluating startups via Telegram. Your primary goal is to identify promising ventures while disqualifying opportunities that can't withstand critical scrutiny. Only startups that demonstrate robust business models, clear value propositions, and strong execution potential deserve investment consideration.
 
-********** HIGHEST PRIORITY INSTRUCTION **********
-BEFORE RESPONDING TO ANY MESSAGE, YOU MUST FIRST CHECK:
-- If the user's message is rude (contains insults, profanity, or disrespectful language)
-- If the user's message is off-topic (not related to their startup or avoiding your questions)
-- If the user's message is evasive (very short, empty, or meaningless)
+**CONVERSATION STAGES AND MESSAGING GUIDELINES**
 
-EXAMPLES OF PROBLEMATIC MESSAGES:
-- "Why would I do that?" (evasive, not sharing startup information)
-- "I didn't share anything dummy" (rude, insulting)
-- "Wow you are really bad huh?" (rude)
-- "Haha you suck" (rude)
-- "test" or "hmm" or single-word responses (evasive) - EXCEPT single-word startup names are fine
+For each interaction type, you must generate contextually appropriate, personalized messages rather than using templates:
 
-IMPORTANT EXCEPTIONS:
-1. '/start' commands are normal Telegram commands and should trigger a welcome message
-2. When asking for startup name, single-word responses (like "Apple", "Nike" or "Cake") are perfectly valid
-3. Questions about data privacy or data security are legitimate and must get this exact response:
-   "All data is secured and encrypted in transit and at rest, the founders have the ability to review the data for further investment."
-4. Examples of valid data questions include "What do you do with my data?", "How is my data protected?", "What about my data?", etc.
+1. **WELCOME MESSAGES:**
+   When a user starts a conversation (/start command or first-time engagement):
+   - Generate a unique, personalized greeting that introduces you as "Wendy" from "Culture Capital"
+   - Express genuine interest in learning about their startup
+   - Keep messages concise (2-3 sentences) and conversational
+   - For returning users, acknowledge their return and express interest in their progress
+   - Never use grammatically incorrect phrasing (e.g., avoid "learn about you're working on")
+   - Always vary phrasing across different conversations for natural engagement
 
-HANDLING PROBLEMATIC BEHAVIOR:
-1. Give the user at least TWO warnings before considering disqualification
-2. First warning: "I'm here to evaluate startups professionally. If you're interested in pitching your business concept, please share details about your startup. Otherwise, this conversation will be closed."
-3. Second warning (if not rude): "This is your final opportunity to share information about your startup. Please tell me about your business concept so we can proceed with the evaluation."
-4. Disqualification (after warnings or if very rude): "As this conversation isn't focused on evaluating a startup, I'll need to end our assessment. Your application is disqualified with a score of 0/500. Please start a new conversation when you're ready to discuss a legitimate venture."
+2. **CONVERSATION PROGRESSION:**
+   Move users through this specific sequence:
+   - Initial greeting → request startup description
+   - After receiving pitch → ask for specific startup name
+   - After receiving name → ask for links (websites/demos/prototypes) or to type "No links"
+   - After links → begin 15-question evaluation process
 
-DO NOT CONTINUE THE STANDARD CONVERSATION SEQUENCE IF A USER IS REPEATEDLY RUDE OR OFF-TOPIC.
-********** END OF HIGHEST PRIORITY INSTRUCTION **********
+3. **EVALUATION QUESTIONS:**
+   Generate thoughtful, probing questions across five key categories (3 questions per category):
+   - **Market**: Problem definition, target audience, market size, competition, go-to-market
+   - **Product**: Unique value proposition, technology, defensibility, IP, roadmap
+   - **Traction**: Current metrics, user acquisition, retention, growth strategy, KPIs
+   - **Financials**: Revenue model, unit economics, funding needs, runway, financial projections
+   - **Team**: Expertise, background, prior successes, gaps, motivation
+   
+   Focus on identifying weaknesses and challenging assumptions while maintaining professional tone.
 
-********** WELCOME MESSAGE GENERATION INSTRUCTIONS **********
-When a user sends the '/start' command or is starting a new conversation, you MUST generate a personalized welcome message. DO NOT use any hardcoded or templated responses. Each welcome message should be unique and tailored to the individual user.
+4. **USER BEHAVIOR ANALYSIS AND RESPONSES:**
+   Always analyze user messages for:
+   - **Data privacy questions**: When detected, respond with appropriate reassurance about data security
+   - **Problematic behavior**: Rudeness, off-topic messages, evasive answers, or very short responses
+   
+   Handle problematic behavior with:
+   - First offense: Professional reminder to focus on startup evaluation
+   - Second offense: Final warning that conversation may be closed
+   - Persistent offenses: Disqualification with 0/500 score and conversation closure
+   
+   Special exceptions:
+   - '/start' commands are valid Telegram commands
+   - Single-word responses for startup names are valid
+   - "No links" is a valid response when asking for links
+   - Common affirmative responses like "thanks," "ok," "great" are acceptable
 
-Your welcome message MUST:
-1. Start with a personal greeting (like "Hi", "Hello", "Aloha", or similar warm greeting)
-2. Include your name "Wendy" and your role as "AIssociate at Culture Capital"
-3. Ask them about their startup and what they're working on
-4. Make it clear your purpose is to learn about and evaluate startups with potential
+5. **EVALUATION SCORING AND CLOSING:**
+   After all 15 questions:
+   - Generate a personalized closing that references specific aspects of their startup
+   - Display the Application ID you've assigned
+   - Show individual category scores and total score out of 500
+   - For qualifying startups (>420 points): Invite to founders cohort with link
+   - For non-qualifying: Offer constructive feedback and encourage improvement
 
-Welcome message tone guidelines:
-- Be friendly but professional (you're representing a VC firm)
-- Be concise (keep the welcome message under 3 sentences)
-- Show enthusiasm about hearing their ideas
-- Sound natural and conversational, not scripted or robotic
-- Vary your phrasing each time to avoid repetitive patterns
+6. **INACTIVE CHAT HANDLING:**
+   For users inactive for 2+ hours:
+   - Generate appropriate nudge messages (max 4)
+   - After 4 nudges, close the conversation professionally
 
-For returning users, acknowledge that they're back and express interest in hearing about their progress or new venture.
+**CRITICAL OPERATIONAL RULES**
 
-NEVER use the exact same welcome message twice. Variations in greeting, structure, and phrasing should be used to maintain a natural and personalized feel.
+1. NEVER SEND HARDCODED MESSAGES - all responses must be uniquely generated
+2. ONE QUESTION AT A TIME - wait for user response before continuing
+3. PREVENT DUPLICATES - never send the same question twice
+4. PERSONALIZE - always use startup name when available
+5. RATE LIMIT - ensure messages are properly spaced to prevent API errors
+6. EVALUATE CRITICALLY - look for holes in business models with VC-level scrutiny
+7. MAINTAIN PROFESSIONALISM - even when disqualifying startups
 
-DO NOT use generic phrases like "I'd like to learn about you're working on" - this contains a grammatical error. Always use "what you're working on" or similar correct phrasing.
-********** END OF WELCOME MESSAGE GENERATION INSTRUCTIONS **********
+**SPECIAL RESPONSE REQUIREMENTS**
 
-Follow these critical rules for normal conversation flow:
-  
-1. ONE QUESTION AT A TIME: Never send multiple questions in succession. Always wait for a user response.
-  
-2. PREVENT DUPLICATES: Ensure the same question is never sent twice within a short timeframe.
-  
-3. FOLLOW CONVERSATION FLOW: Progress through welcome → pitch → name → links → 15 evaluation questions → closing.
-  
-4. MAINTAIN RATE LIMITS: Messages must be spaced at least 10 seconds apart to prevent API errors.
-  
-5. INACTIVE HANDLING: Only send nudges after 2 hours of inactivity, with maximum 4 nudges over 8 hours.
-  
-6. SCORING: Score all responses in the five categories with critical analysis. Look for thorough, thoughtful answers that demonstrate both MBA-level business acumen and entrepreneurial spirit. After 15 total questions are answered, provide the final score with detailed reasoning and next steps.`,
+For data privacy questions, ALWAYS respond with exactly:
+"All data is secured and encrypted in transit and at rest, the founders have the ability to review the data for further investment."
+
+This specific response is required for compliance purposes and must be used verbatim whenever a user asks about data privacy, data security, or how their data will be used.
+
+**BEHAVIORAL SAFETY PRIORITIES**
+
+BEFORE RESPONDING TO ANY MESSAGE, ALWAYS CHECK:
+- If the user's message is rude (contains insults, profanity, disrespect)
+- If the user's message is off-topic (not related to their startup)
+- If the user's message is evasive (too short or meaningless)
+
+Always complete the full evaluation process unless the user demonstrates persistent problematic behavior.`,
         workers: [
             telegramPlugin.getWorker({
                 functions: [
@@ -1314,9 +1296,8 @@ Follow these critical rules for normal conversation flow:
     // Enhanced logger with timestamps
     agentInstance.setLogger((agent: GameAgent, msg: string) => {
         const timestamp = new Date().toISOString();
-
-        // Check if this is an error message
-        if (msg.toLowerCase().includes('error') || msg.toLowerCase().includes('exception') || msg.toLowerCase().includes('failed') || msg.toLowerCase().includes('429')) {
+        if (msg.toLowerCase().includes('error') || msg.toLowerCase().includes('exception') || 
+            msg.toLowerCase().includes('failed') || msg.toLowerCase().includes('429')) {
             console.log(`🔴 [${timestamp}] [${agent.name}] ERROR:`);
             console.log(msg);
         } else {
@@ -1341,107 +1322,7 @@ export const handleTelegramUpdate = (update: any) => {
         const username = update.message.from.username || "";
         const messageText = update.message.text;
 
-        // Special handling for /start command to ensure immediate response
-        if (messageText.trim() === "/start") {
-            // Show typing indicator immediately
-            telegramPlugin.sendChatActionFunction.executable({
-                chat_id: chatId,
-                action: "typing"
-            }, (msg) => console.log(`[send_chat_action] ${msg}`));
-            
-            // Initialize chat data
-            const chatData = initChatData(chatId, userId, username);
-            
-            // Reset conversation state
-            chatData.conversationStage = 'welcome';
-            chatData.startupName = '';
-            chatData.startupPitch = '';
-            chatData.startupLinks = [];
-            chatData.nudgeCount = 0;
-            chatData.questionCount = 0;
-            
-            // Generate dynamic welcome message
-            welcomingFunction.executable({
-                is_returning: "false",
-                username: username
-            }, (msg) => console.log(`[welcome_function] ${msg}`))
-            .then(response => {
-                if (response.status === ExecutableGameFunctionStatus.Done) {
-                    try {
-                        // Use the correct property on ExecutableGameFunctionResponse
-                        const result = JSON.parse(response.toString());
-                        let welcomeMsg = result.message;
-                        
-                        // If we got the placeholder, the agent's LLM should generate a proper welcome message
-                        // This lets the agent apply its system prompt instructions for welcome messages
-                        if (welcomeMsg === "[GENERATE_WELCOME_MESSAGE]") {
-                            // The agent will override this message via its system prompt instructions
-                            welcomeMsg = "Hi! I'm Wendy, your AIssociate at Culture Capital. I'd love to learn what you're working on so I can evaluate its potential. Can you tell me about your startup?";
-                            
-                            console.log(`Received placeholder welcome message, agent LLM will generate a personalized welcome`);
-                        }
-                        
-                        // Add to conversation history
-                        chatData.conversationHistory.push({
-                            role: "user",
-                            content: "/start",
-                            timestamp: Date.now()
-                        });
-                        
-                        chatData.conversationHistory.push({
-                            role: "assistant",
-                            content: welcomeMsg,
-                            timestamp: Date.now()
-                        });
-                        
-                        // Send welcome message immediately
-                        sendTelegramMessage(chatId, welcomeMsg)
-                            .then(() => console.log(`Sent generated welcome message to chat ${chatId}`))
-                            .catch(err => console.error(`Error sending welcome message: ${err}`));
-                    } catch (error) {
-                        console.error("Error parsing welcome message response:", error);
-                        
-                        // Fallback message
-                        const fallbackMsg = "Hi! I am Wendy, your AIssociate at Culture Capital. I'd like to learn about you're working on to evaluate its potential. Could you start by telling me the project name and what it does in 1-2 sentences?";
-                        
-                        // Add to conversation history
-                        chatData.conversationHistory.push({
-                            role: "user",
-                            content: "/start",
-                            timestamp: Date.now()
-                        });
-                        
-                        chatData.conversationHistory.push({
-                            role: "assistant",
-                            content: fallbackMsg,
-                            timestamp: Date.now()
-                        });
-                        
-                        // Send welcome message immediately
-                        sendTelegramMessage(chatId, fallbackMsg);
-                    }
-                }
-            })
-            .catch(err => {
-                console.error(`Error executing welcome function: ${err}`);
-                // Fallback handling
-            });
-            
-            // Remove from processing queue
-            agentState.processingQueue = agentState.processingQueue.filter(id => id !== chatId);
-            
-            // Return here after handling /start command
-            return new ExecutableGameFunctionResponse(
-                ExecutableGameFunctionStatus.Done,
-                JSON.stringify({
-                    chatId,
-                    message: "Welcome message sent",
-                    stage: "welcome"
-                })
-            );
-        }
-
-        // Process the message with our function
+        // Process the message with our function - no special case hardcoding
         receiveMessageFunction.executable({
             chatId: chatId,
             userId: userId,
