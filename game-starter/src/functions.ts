@@ -296,7 +296,7 @@ const welcomingFunction = new GameFunction({
   
   executable: async (args, logger) => {
     try {
-      const isReturning = args.is_returning === "true" || args.is_returning === true;
+      const isReturning = args.is_returning === "true";
       const username = args.username || "";
       const conversationStage = args.conversation_stage || "initial";
       const userResponse = args.user_response || "";
@@ -449,8 +449,16 @@ const welcomingFunction = new GameFunction({
           `Hi there! I'm Wendy, an AIssociate working with Culture Capital. I'm looking for promising startups to evaluate - would you like to pitch yours to me today?`;
       } else if (conversationStage === "awaiting_interest_confirmation") {
         responseData.message = `Great! I'd love to hear about your venture. Could you please share your startup's name and give me a 1-2 sentence description of what you're building?`;
-      } else if (conversationStage === "collecting_details" && hasValidResponse) {
-        responseData.message = `Thanks for sharing those details! I've noted them down. Now, I'd like to understand more about your target market - what specific problem are you solving, and how painful is this problem for your users?`;
+      } else if (conversationStage === "collecting_details") {
+        // We need to determine if the response is valid here again
+        const words = userResponse.split(/\s+/);
+        const hasEnoughContent = words.length >= 5; // Very basic check for minimum content
+        
+        if (hasEnoughContent) {
+          responseData.message = `Thanks for sharing those details! I've noted them down. Now, I'd like to understand more about your target market - what specific problem are you solving, and how painful is this problem for your users?`;
+        } else {
+          responseData.message = `I need a bit more information to properly evaluate your startup. Could you please provide your startup's name and a brief 1-2 sentence description of what you're building?`;
+        }
       } else {
         responseData.message = `I need a bit more information to properly evaluate your startup. Could you please provide your startup's name and a brief 1-2 sentence description of what you're building?`;
       }

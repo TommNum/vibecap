@@ -14,6 +14,7 @@
   "author": "",
   "license": "ISC",
   "devDependencies": {
+    "@types/jest": "^29.5.14",
     "@types/node": "^22.12.0",
     "ts-node": "^10.9.2",
     "typescript": "^5.7.3"
@@ -26,6 +27,6 @@
     "dotenv": "^16.4.7",
     "node-telegram-bot-api": "^0.66.0",
     "openai": "^4.81.0",
-    "pg": "^8.14.0"
+    "pg": "^8.14.1"
   }
 }
