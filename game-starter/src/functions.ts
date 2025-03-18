@@ -169,7 +169,8 @@ const processUserMessageFunction = new GameFunction({
   ] as const,
   executable: async (args, logger) => {
     try {
-      const { message, conversation_stage, previous_warnings } = args;
+      // Add default empty string to message parameter
+      const { message = "", conversation_stage, previous_warnings } = args;
       
       logger(`Analyzing user message at ${conversation_stage} stage`);
       
