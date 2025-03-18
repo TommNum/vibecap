@@ -43,7 +43,7 @@ const questioningFunction = new GameFunction({
 
       // Generate appropriate question based on type and context
       if (questionType === "welcome") {
-        message = "Hi! I am Wendy, your Associate at Vibe Capital. I'd like to learn about your startup to evaluate its potential. Could you start by telling me your startup's name and a 1-2 sentence description of what you do?";
+        message = "Hi! I am Wendy, your Associate at Vibe Capital. I'd like to learn about your startup to evaluate its potential. Would you like to pitch your startup to me today?";
       } else {
         // Generate dynamic, contextual questions based on previous responses
         // This will rely on the LLM's ability to formulate appropriate questions
