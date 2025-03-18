@@ -232,12 +232,10 @@ const processUserMessageFunction = new GameFunction({
         lowerMessage.includes("data stored") ||
         (lowerMessage.includes("privacy") && lowerMessage.includes("data"));
       
-      // This function still needs to return structured data
+      // Return a simple string result instead of JSON
       return new ExecutableGameFunctionResponse(
         ExecutableGameFunctionStatus.Done,
-        JSON.stringify({
-          is_data_privacy: isDataPrivacy
-        })
+        isDataPrivacy ? "DATA_PRIVACY_QUESTION" : "NORMAL_MESSAGE"
       );
     } catch (e) {
       const errorMessage = e instanceof Error ? e.message : 'Unknown error';

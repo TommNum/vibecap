@@ -366,45 +366,36 @@ const receiveMessageFunction = new GameFunction({
                     }, (msg) => logger(`[process_user_message] ${msg}`));
                     
                     if (messageAnalysisResponse.status === ExecutableGameFunctionStatus.Done) {
-                        try {
-                            // Properly parse the JSON response
-                            const analysisResult = JSON.parse(messageAnalysisResponse.feedback);
+                        // Simple string comparison instead of JSON parsing
+                        if (messageAnalysisResponse.feedback === "DATA_PRIVACY_QUESTION") {
+                            logger(`Detected data privacy question in chat ${chatId}`);
                             
-                            // Check if it's a data privacy question
-                            if (analysisResult.is_data_privacy) {
-                                logger(`Detected data privacy question in chat ${chatId}`);
-                                
-                                // Agent will generate the exact required privacy response
-                                // based on its system prompt instructions
-                                const privacyMsg = "All data is secured and encrypted in transit and at rest, the founders have the ability to review the data for further investment.";
-                                
-                                // Add response to conversation history
-                                chatData.conversationHistory.push({
-                                    role: "assistant",
-                                    content: privacyMsg,
-                                    timestamp: Date.now()
-                                });
-                                
-                                // Send message directly
-                                await sendTelegramMessage(chatId as string, privacyMsg);
-                                
-                                // Add to processing queue to continue normal conversation
-                                if (!agentState.processingQueue.includes(chatId as string)) {
-                                    agentState.processingQueue.push(chatId as string);
-                                }
-                                
-                                return new ExecutableGameFunctionResponse(
-                                    ExecutableGameFunctionStatus.Done,
-                                    JSON.stringify({
-                                        chatId,
-                                        message: privacyMsg,
-                                        privacy: true
-                                    })
-                                );
+                            // Use the privacy response dictated by requirements
+                            const privacyMsg = "All data is secured and encrypted in transit and at rest, the founders have the ability to review the data for further investment.";
+                            
+                            // Add response to conversation history
+                            chatData.conversationHistory.push({
+                                role: "assistant",
+                                content: privacyMsg,
+                                timestamp: Date.now()
+                            });
+                            
+                            // Send message directly
+                            await sendTelegramMessage(chatId as string, privacyMsg);
+                            
+                            // Add to processing queue to continue normal conversation
+                            if (!agentState.processingQueue.includes(chatId as string)) {
+                                agentState.processingQueue.push(chatId as string);
                             }
-                        } catch (parseError) {
-                            logger(`Error parsing message analysis response: ${parseError}`);
-                            // Continue with normal processing despite error
+                            
+                            return new ExecutableGameFunctionResponse(
+                                ExecutableGameFunctionStatus.Done,
+                                JSON.stringify({
+                                    chatId,
+                                    message: privacyMsg,
+                                    privacy: true
+                                })
+                            );
                         }
                     }
                 } catch (error) {
