@@ -30,13 +30,17 @@ const welcomingFunction = new GameFunction({
       
       logger(`Generating welcome message for ${isReturning ? "returning" : "new"} user${username ? ` with username ${username}` : ""}`);
       
-      // Create a personalized welcome message
-      const welcomeMsg = `Hi${username ? ` ${username}` : ""}! I'm Wendy, your AIssociate at Culture Capital. I'd love to learn what you're working on so I can evaluate its potential. Can you tell me about your startup?`;
-      
-      // Return a plain string - this is the key change
+      // Create a placeholder that the agent will replace
+      // The key is properly stringifying the JSON to avoid parsing errors
       return new ExecutableGameFunctionResponse(
         ExecutableGameFunctionStatus.Done,
-        welcomeMsg
+        JSON.stringify({
+          type: "welcome",
+          username: username,
+          is_returning: isReturning,
+          // The agent will replace this placeholder
+          placeholder: "[GENERATE_WELCOME]"
+        })
       );
     } catch (e) {
       const errorMessage = e instanceof Error ? e.message : 'Unknown error';
