@@ -30,17 +30,10 @@ const welcomingFunction = new GameFunction({
       
       logger(`Generating welcome message for ${isReturning ? "returning" : "new"} user${username ? ` with username ${username}` : ""}`);
       
-      // Create a placeholder that the agent will replace
-      // The key is properly stringifying the JSON to avoid parsing errors
+      // THIS IS THE KEY CHANGE - return a direct string message that the agent will replace
       return new ExecutableGameFunctionResponse(
         ExecutableGameFunctionStatus.Done,
-        JSON.stringify({
-          type: "welcome",
-          username: username,
-          is_returning: isReturning,
-          // The agent will replace this placeholder
-          placeholder: "[GENERATE_WELCOME]"
-        })
+        `Hello${username ? ` ${username}` : ""}! I'm Wendy, your AIssociate at Culture Capital. I'd love to learn what you're working on so I can evaluate its potential. Can you tell me about your startup?`
       );
     } catch (e) {
       const errorMessage = e instanceof Error ? e.message : 'Unknown error';
@@ -68,18 +61,10 @@ const questioningFunction = new GameFunction({
       
       logger(`Generating ${category} question #${question_number} for ${startup_name || "startup"}`);
       
-      // Create a properly formatted JSON response
-      const questionData = {
-        message_placeholder: "[GENERATE_EVALUATION_QUESTION]",
-        category: category,
-        question_number: question_number,
-        startup_name: startup_name || ""
-      };
-      
-      // Important: Properly stringify the JSON
+      // Return a direct string message instead of JSON
       return new ExecutableGameFunctionResponse(
         ExecutableGameFunctionStatus.Done,
-        JSON.stringify(questionData)
+        `Let's talk about the ${category} aspect of ${startup_name || "your startup"}. Question ${question_number}: How would you describe your target market size and the specific customer segments you're addressing?`
       );
     } catch (e) {
       const errorMessage = e instanceof Error ? e.message : 'Unknown error';
@@ -106,17 +91,26 @@ const replyMessageFunction = new GameFunction({
       
       logger(`Generating ${context} response for ${startup_name || "startup"}`);
       
-      // Create a properly formatted JSON response
-      const responseData = {
-        message_placeholder: "[GENERATE_CONTEXTUAL_RESPONSE]",
-        context: context,
-        startup_name: startup_name || ""
-      };
+      // Return a direct string message instead of JSON
+      let responseMsg = "";
       
-      // Important: Properly stringify the JSON
+      switch (context) {
+        case "ask_name":
+          responseMsg = `Thanks for sharing that! What's the name of your startup?`;
+          break;
+        case "ask_links":
+          responseMsg = `Great to learn about ${startup_name || "your startup"}! Do you have any websites, demos, or product links you'd like to share? If not, just type "No links".`;
+          break;
+        case "conversation_closed":
+          responseMsg = `I'm sorry, but our evaluation of ${startup_name || "your startup"} has been completed. If you'd like to start a new evaluation, please type /start.`;
+          break;
+        default:
+          responseMsg = `I understand. Let's continue discussing ${startup_name || "your startup"}.`;
+      }
+      
       return new ExecutableGameFunctionResponse(
         ExecutableGameFunctionStatus.Done,
-        JSON.stringify(responseData)
+        responseMsg
       );
     } catch (e) {
       const errorMessage = e instanceof Error ? e.message : 'Unknown error';
@@ -142,23 +136,32 @@ const closingFunction = new GameFunction({
   executable: async (args, logger) => {
     try {
       const { startup_name, app_id, category_scores, total_score, qualified } = args;
+      const isQualified = args.qualified === "true";
       
       logger(`Generating final evaluation for ${startup_name || "startup"} with score ${total_score}/500`);
       
-      // Create a properly formatted JSON response
-      const closingData = {
-        message_placeholder: "[GENERATE_CLOSING_EVALUATION]",
-        startup_name: startup_name || "",
-        app_id: app_id,
-        category_scores: category_scores,
-        total_score: total_score,
-        qualified: qualified
-      };
+      // Build a direct string message with the evaluation details
+      let scores = "";
+      try {
+        const parsedScores = JSON.parse(category_scores || "{}");
+        scores = Object.entries(parsedScores)
+          .map(([category, score]) => `${category.charAt(0).toUpperCase() + category.slice(1)}: ${score}/100`)
+          .join('\n');
+      } catch (e) {
+        scores = "Scores unavailable";
+      }
       
-      // Important: Properly stringify the JSON
+      const closingMsg = `Thank you for sharing details about ${startup_name || "your startup"}!\n\n` +
+        `Your application ID is: ${app_id}\n\n` +
+        `Here's your evaluation:\n${scores}\n` +
+        `Total score: ${total_score}/500\n\n` +
+        (isQualified ? 
+          `Congratulations! Your startup has qualified for our founders cohort. We'll be in touch soon with next steps.` :
+          `We appreciate your submission, but your startup doesn't meet our current investment criteria. We encourage you to continue developing your business and apply again in the future.`);
+      
       return new ExecutableGameFunctionResponse(
         ExecutableGameFunctionStatus.Done,
-        JSON.stringify(closingData)
+        closingMsg
       );
     } catch (e) {
       const errorMessage = e instanceof Error ? e.message : 'Unknown error';
@@ -186,21 +189,18 @@ const processUserMessageFunction = new GameFunction({
       
       logger(`Analyzing user message at ${conversation_stage} stage`);
       
-      // Create a properly formatted JSON response
-      const analysisResult = {
-        message: message,
-        conversation_stage: conversation_stage,
-        previous_warnings: previous_warnings,
-        is_data_privacy: message.toLowerCase().includes("data privacy") || 
+      // For this function, we need to return structured data
+      // But we'll make it super simple to parse
+      const isDataPrivacy = message.toLowerCase().includes("data privacy") || 
                        message.toLowerCase().includes("protect my data") ||
-                       message.toLowerCase().includes("what will you do with my data"),
-        analysis_placeholder: "[ANALYZE_USER_BEHAVIOR]" // Agent will replace this
-      };
+                       message.toLowerCase().includes("what will you do with my data");
       
-      // Important: Properly stringify the JSON
+      // Return a simple JSON string that's easy to parse
       return new ExecutableGameFunctionResponse(
         ExecutableGameFunctionStatus.Done,
-        JSON.stringify(analysisResult)
+        JSON.stringify({
+          is_data_privacy: isDataPrivacy
+        })
       );
     } catch (e) {
       const errorMessage = e instanceof Error ? e.message : 'Unknown error';
@@ -231,19 +231,13 @@ const generateNudgeFunction = new GameFunction({
       
       logger(`Generating ${isClosing ? "closing" : "nudge"} message #${count} for ${startup_name || "startup"}`);
       
-      // Create a properly formatted JSON response
-      const nudgeData = {
-        message_placeholder: "[GENERATE_NUDGE_MESSAGE]",
-        startup_name: startup_name || "",
-        nudge_count: count,
-        is_closing: isClosing,
-        app_id: app_id
-      };
-      
-      // Important: Properly stringify the JSON
+      // Create a simple JSON response that's easy to parse
       return new ExecutableGameFunctionResponse(
         ExecutableGameFunctionStatus.Done,
-        JSON.stringify(nudgeData)
+        JSON.stringify({
+          message: `Hi there! I noticed you haven't responded in a while${startup_name ? ` regarding ${startup_name}` : ""}. ${isClosing ? "Since we haven't heard back from you, I'm closing this evaluation. Feel free to start a new one anytime with /start." : "Are you still interested in continuing our conversation?"}`,
+          is_closing: isClosing
+        })
       );
     } catch (e) {
       const errorMessage = e instanceof Error ? e.message : 'Unknown error';

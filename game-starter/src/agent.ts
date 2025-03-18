@@ -488,12 +488,8 @@ const processConversationFunction = new GameFunction({
                     
                     if (welcomeResponse.status === ExecutableGameFunctionStatus.Done) {
                         try {
-                            // Properly parse the JSON response with the new structure
-                            const responseData = JSON.parse(welcomeResponse.toString());
-                            
-                            // Use the placeholder structure - in a real scenario, the agent would 
-                            // generate content to replace the placeholder
-                            let welcomeMsg = `Hi${responseData.username ? ` ${responseData.username}` : ""}! I'm Wendy, your AIssociate at Culture Capital. I'd love to learn what you're working on so I can evaluate its potential. Can you tell me about your startup?`;
+                            // Get the welcome message directly as a string, no parsing needed
+                            const welcomeMsg = welcomeResponse.toString();
                             
                             // Add to conversation history
                             chatData.conversationHistory.push({
@@ -505,9 +501,9 @@ const processConversationFunction = new GameFunction({
                             // Send welcome message immediately
                             await sendTelegramMessage(chatId as string, welcomeMsg);
                         } catch (parseError) {
-                            logger(`Error parsing welcome response: ${parseError}`);
+                            logger(`Error with welcome response: ${parseError}`);
                             
-                            // Fallback welcome message if parsing fails
+                            // Fallback welcome message if processing fails
                             const fallbackMsg = `Hello! I'm Wendy from Culture Capital. I'd love to learn about your startup. What are you working on?`;
                             
                             // Add to conversation history
@@ -580,43 +576,38 @@ const processConversationFunction = new GameFunction({
                     }, (msg) => logger(`[generate_nudge] ${msg}`));
                     
                     if (nudgeResponse.status === ExecutableGameFunctionStatus.Done) {
-                        try {
-                            const nudgeData = JSON.parse(nudgeResponse.toString());
-                            
-                            // Increment nudge count
-                            chatData.nudgeCount++;
-                            
-                            // Check if this is a closing nudge (4th)
-                            if (nudgeData.is_closing || chatData.nudgeCount >= 4) {
-                                chatData.isClosed = true;
-                            }
-                            
-                            // Add to conversation history
-                            const nudgeMsg = nudgeData.message_placeholder;
-                            chatData.conversationHistory.push({
-                                role: "assistant",
-                                content: nudgeMsg,
-                                timestamp: Date.now()
-                            });
-                            
-                            // Send nudge message
-                            await sendTelegramMessage(chatId as string, nudgeMsg);
-                            
-                            // Remove from processing queue
-                            agentState.processingQueue = agentState.processingQueue.filter(id => id !== chatId);
-                            
-                            return new ExecutableGameFunctionResponse(
-                                ExecutableGameFunctionStatus.Done,
-                                JSON.stringify({
-                                    chatId,
-                                    nudgeCount: chatData.nudgeCount,
-                                    isClosed: chatData.isClosed
-                                })
-                            );
-                        } catch (parseError) {
-                            logger(`Error parsing nudge response: ${parseError}`);
-                            // Continue to error handling
+                        const nudgeData = JSON.parse(nudgeResponse.toString());
+                        
+                        // Increment nudge count
+                        chatData.nudgeCount++;
+                        
+                        // Check if this is a closing nudge (4th)
+                        if (nudgeData.is_closing || chatData.nudgeCount >= 4) {
+                            chatData.isClosed = true;
                         }
+                        
+                        // Add to conversation history
+                        const nudgeMsg = nudgeData.message;
+                        chatData.conversationHistory.push({
+                            role: "assistant",
+                            content: nudgeMsg,
+                            timestamp: Date.now()
+                        });
+                        
+                        // Send nudge message
+                        await sendTelegramMessage(chatId as string, nudgeMsg);
+                        
+                        // Remove from processing queue
+                        agentState.processingQueue = agentState.processingQueue.filter(id => id !== chatId);
+                        
+                        return new ExecutableGameFunctionResponse(
+                            ExecutableGameFunctionStatus.Done,
+                            JSON.stringify({
+                                chatId,
+                                nudgeCount: chatData.nudgeCount,
+                                isClosed: chatData.isClosed
+                            })
+                        );
                     }
                 } catch (error) {
                     logger(`Error generating nudge: ${error}`);
@@ -635,9 +626,8 @@ const processConversationFunction = new GameFunction({
                     
                     if (closedResponse.status === ExecutableGameFunctionStatus.Done) {
                         try {
-                            const responseData = JSON.parse(closedResponse.toString());
-                            // Use the message_placeholder field
-                            const closedMsg = responseData.message_placeholder;
+                            // Get the message directly as a string, no parsing needed
+                            const closedMsg = closedResponse.toString();
                             
                             // Send the message directly
                             await sendTelegramMessage(chatId as string, closedMsg);
@@ -654,7 +644,7 @@ const processConversationFunction = new GameFunction({
                                 })
                             );
                         } catch (parseError) {
-                            logger(`Error parsing closed conversation response: ${parseError}`);
+                            logger(`Error handling closed conversation response: ${parseError}`);
                             // Continue to error recovery
                         }
                     }
@@ -723,8 +713,8 @@ const processConversationFunction = new GameFunction({
                         }, (msg) => logger(`[reply_message] ${msg}`));
                         
                         if (askNameResponse.status === ExecutableGameFunctionStatus.Done) {
-                            const responseData = JSON.parse(askNameResponse.toString());
-                            responseMsg = responseData.message_placeholder;
+                            // Get the message directly as a string, no parsing needed
+                            responseMsg = askNameResponse.toString();
                         }
                         
                         chatData.conversationStage = 'startup_name';
@@ -742,8 +732,8 @@ const processConversationFunction = new GameFunction({
                         }, (msg) => logger(`[reply_message] ${msg}`));
                         
                         if (askLinksResponse.status === ExecutableGameFunctionStatus.Done) {
-                            const responseData = JSON.parse(askLinksResponse.toString());
-                            responseMsg = responseData.message_placeholder;
+                            // Get the message directly as a string, no parsing needed
+                            responseMsg = askLinksResponse.toString();
                         }
                         
                         chatData.conversationStage = 'links';
@@ -767,8 +757,8 @@ const processConversationFunction = new GameFunction({
                         }, (msg) => logger(`[questioning_function] ${msg}`));
                         
                         if (firstQuestionResponse.status === ExecutableGameFunctionStatus.Done) {
-                            const responseData = JSON.parse(firstQuestionResponse.toString());
-                            responseMsg = responseData.message_placeholder;
+                            // Get the message directly as a string, no parsing needed
+                            responseMsg = firstQuestionResponse.toString();
                         }
                         
                         chatData.questionCount++;
@@ -808,8 +798,8 @@ const processConversationFunction = new GameFunction({
                             }, (msg) => logger(`[closing_function] ${msg}`));
                             
                             if (closingResponse.status === ExecutableGameFunctionStatus.Done) {
-                                const responseData = JSON.parse(closingResponse.toString());
-                                responseMsg = responseData.message_placeholder;
+                                // Get the message directly as a string, no parsing needed
+                                responseMsg = closingResponse.toString();
                             }
 
                             chatData.isClosed = true;
@@ -840,8 +830,8 @@ const processConversationFunction = new GameFunction({
                             }, (msg) => logger(`[questioning_function] ${msg}`));
 
                             if (nextQuestionResponse.status === ExecutableGameFunctionStatus.Done) {
-                                const responseData = JSON.parse(nextQuestionResponse.toString());
-                                responseMsg = responseData.message_placeholder;
+                                // Get the message directly as a string, no parsing needed
+                                responseMsg = nextQuestionResponse.toString();
                             }
 
                             chatData.questionCount++;
@@ -857,13 +847,8 @@ const processConversationFunction = new GameFunction({
                         }, (msg) => logger(`[welcome_function] ${msg}`));
                         
                         if (resetWelcomeResponse.status === ExecutableGameFunctionStatus.Done) {
-                            try {
-                                const responseData = JSON.parse(resetWelcomeResponse.toString());
-                                responseMsg = `Hi${responseData.username ? ` ${responseData.username}` : ""}! I'm Wendy from Culture Capital. Let's start over. Can you tell me about your startup?`;
-                            } catch (parseError) {
-                                logger(`Error parsing reset welcome response: ${parseError}`);
-                                responseMsg = "Let's start over. Can you tell me about your startup?";
-                            }
+                            // Get the message directly as a string, no parsing needed
+                            responseMsg = resetWelcomeResponse.toString();
                         }
                         
                         chatData.conversationStage = 'welcome';
@@ -1026,7 +1011,7 @@ const processInactiveChatFunction = new GameFunction({
                         }
                         
                         // Add to conversation history
-                        const nudgeMsg = nudgeData.message_placeholder;
+                        const nudgeMsg = nudgeData.message;
                         chatData.conversationHistory.push({
                             role: "assistant",
                             content: nudgeMsg,
