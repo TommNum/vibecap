@@ -68,15 +68,18 @@ const questioningFunction = new GameFunction({
       
       logger(`Generating ${category} question #${question_number} for ${startup_name || "startup"}`);
       
-      // Return placeholder for the agent to replace with generated content
+      // Create a properly formatted JSON response
+      const questionData = {
+        message_placeholder: "[GENERATE_EVALUATION_QUESTION]",
+        category: category,
+        question_number: question_number,
+        startup_name: startup_name || ""
+      };
+      
+      // Important: Properly stringify the JSON
       return new ExecutableGameFunctionResponse(
         ExecutableGameFunctionStatus.Done,
-        JSON.stringify({
-          message: "[GENERATE_EVALUATION_QUESTION]",
-          category: category,
-          question_number: question_number,
-          startup_name: startup_name || ""
-        })
+        JSON.stringify(questionData)
       );
     } catch (e) {
       const errorMessage = e instanceof Error ? e.message : 'Unknown error';
@@ -103,14 +106,17 @@ const replyMessageFunction = new GameFunction({
       
       logger(`Generating ${context} response for ${startup_name || "startup"}`);
       
-      // Return placeholder for the agent to replace with generated content
+      // Create a properly formatted JSON response
+      const responseData = {
+        message_placeholder: "[GENERATE_CONTEXTUAL_RESPONSE]",
+        context: context,
+        startup_name: startup_name || ""
+      };
+      
+      // Important: Properly stringify the JSON
       return new ExecutableGameFunctionResponse(
         ExecutableGameFunctionStatus.Done,
-        JSON.stringify({
-          message: "[GENERATE_CONTEXTUAL_RESPONSE]",
-          context: context,
-          startup_name: startup_name || ""
-        })
+        JSON.stringify(responseData)
       );
     } catch (e) {
       const errorMessage = e instanceof Error ? e.message : 'Unknown error';
@@ -139,17 +145,20 @@ const closingFunction = new GameFunction({
       
       logger(`Generating final evaluation for ${startup_name || "startup"} with score ${total_score}/500`);
       
-      // Return placeholder for the agent to replace with generated content
+      // Create a properly formatted JSON response
+      const closingData = {
+        message_placeholder: "[GENERATE_CLOSING_EVALUATION]",
+        startup_name: startup_name || "",
+        app_id: app_id,
+        category_scores: category_scores,
+        total_score: total_score,
+        qualified: qualified
+      };
+      
+      // Important: Properly stringify the JSON
       return new ExecutableGameFunctionResponse(
         ExecutableGameFunctionStatus.Done,
-        JSON.stringify({
-          message: "[GENERATE_CLOSING_EVALUATION]",
-          startup_name: startup_name || "",
-          app_id: app_id,
-          category_scores: category_scores,
-          total_score: total_score,
-          qualified: qualified
-        })
+        JSON.stringify(closingData)
       );
     } catch (e) {
       const errorMessage = e instanceof Error ? e.message : 'Unknown error';
@@ -177,18 +186,21 @@ const processUserMessageFunction = new GameFunction({
       
       logger(`Analyzing user message at ${conversation_stage} stage`);
       
-      // Return placeholder for the agent to replace with generated content
+      // Create a properly formatted JSON response
+      const analysisResult = {
+        message: message,
+        conversation_stage: conversation_stage,
+        previous_warnings: previous_warnings,
+        is_data_privacy: message.toLowerCase().includes("data privacy") || 
+                       message.toLowerCase().includes("protect my data") ||
+                       message.toLowerCase().includes("what will you do with my data"),
+        analysis_placeholder: "[ANALYZE_USER_BEHAVIOR]" // Agent will replace this
+      };
+      
+      // Important: Properly stringify the JSON
       return new ExecutableGameFunctionResponse(
         ExecutableGameFunctionStatus.Done,
-        JSON.stringify({
-          message: message,
-          analysis: "[ANALYZE_USER_BEHAVIOR]",
-          conversation_stage: conversation_stage,
-          previous_warnings: previous_warnings,
-          is_data_privacy: message.toLowerCase().includes("data privacy") || 
-                          message.toLowerCase().includes("protect my data") ||
-                          message.toLowerCase().includes("what will you do with my data")
-        })
+        JSON.stringify(analysisResult)
       );
     } catch (e) {
       const errorMessage = e instanceof Error ? e.message : 'Unknown error';
@@ -219,16 +231,19 @@ const generateNudgeFunction = new GameFunction({
       
       logger(`Generating ${isClosing ? "closing" : "nudge"} message #${count} for ${startup_name || "startup"}`);
       
-      // Return placeholder for the agent to replace with generated content
+      // Create a properly formatted JSON response
+      const nudgeData = {
+        message_placeholder: "[GENERATE_NUDGE_MESSAGE]",
+        startup_name: startup_name || "",
+        nudge_count: count,
+        is_closing: isClosing,
+        app_id: app_id
+      };
+      
+      // Important: Properly stringify the JSON
       return new ExecutableGameFunctionResponse(
         ExecutableGameFunctionStatus.Done,
-        JSON.stringify({
-          message: "[GENERATE_NUDGE_MESSAGE]",
-          startup_name: startup_name || "",
-          nudge_count: count,
-          is_closing: isClosing,
-          app_id: app_id
-        })
+        JSON.stringify(nudgeData)
       );
     } catch (e) {
       const errorMessage = e instanceof Error ? e.message : 'Unknown error';
