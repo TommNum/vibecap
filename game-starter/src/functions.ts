@@ -105,11 +105,12 @@ const replyMessageFunction = new GameFunction({
   args: [
     { name: "context", description: "Context requiring response (ask_name, ask_links, behavior_warning, data_privacy, etc.)" },
     { name: "startup_name", description: "Name of startup if available" },
-    { name: "user_message", description: "User's message being responded to" }
+    { name: "user_message", description: "User's message being responded to" },
+    { name: "response", description: "Our response to the user's message" }
   ] as const,
   executable: async (args, logger) => {
     try {
-      const { context, startup_name, user_message } = args;
+      const { response, context, startup_name, user_message } = args;
 
       logger(`Generating ${context} response for ${startup_name || "startup"}`);
 
@@ -130,7 +131,7 @@ const replyMessageFunction = new GameFunction({
 
       return new ExecutableGameFunctionResponse(
         ExecutableGameFunctionStatus.Done,
-        responseText
+        response ?? responseText
       );
     } catch (e) {
       const errorMessage = e instanceof Error ? e.message : 'Unknown error';
