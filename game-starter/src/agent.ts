@@ -10,10 +10,10 @@ import dotenv from "dotenv";
 import TelegramPlugin from "./telegramPlugin";
 import axios from "axios";
 import { dbService } from './services/database';
-import { 
-    questioningFunction, 
-    replyMessageFunction, 
-    closingFunction, 
+import {
+    questioningFunction,
+    replyMessageFunction,
+    closingFunction,
     processUserMessageFunction,
     welcomingFunction,
     generateNudgeFunction,
@@ -201,7 +201,7 @@ const sendTelegramMessage = async (chatId: string, text: string): Promise<boolea
         console.log(`Preventing duplicate message to chat ${chatId}`);
         return false;
     }
-    
+
     // Ensure we don't send the same message twice in a row
     if (chatData.lastMessage === text) {
         console.log(`Adding uniqueness to prevent duplicate of last message to chat ${chatId}`);
@@ -244,13 +244,13 @@ const sendTelegramMessage = async (chatId: string, text: string): Promise<boolea
         return true;
     } catch (error: any) {
         console.error(`Error sending Telegram message: ${error}`);
-        
+
         // If we get a conflict error, retry with a slightly modified message
         if (error.response && error.response.status === 409) {
             console.log("Retrying with modified message to avoid conflict");
             return sendTelegramMessage(chatId, text + " ");
         }
-        
+
         return false;
     }
 };
@@ -284,10 +284,10 @@ const receiveMessageFunction = new GameFunction({
             // Special handling for /start - priority reset
             if (message && message.trim() === "/start") {
                 logger(`Received /start command in chat ${chatId}, resetting conversation`);
-                
+
                 // Initialize or get chat data
                 const chatData = initChatData(chatId as string, userId as string, username as string);
-                
+
                 // Reset conversation to welcome state
                 chatData.conversationStage = 'welcome';
                 chatData.startupName = '';
@@ -298,32 +298,32 @@ const receiveMessageFunction = new GameFunction({
                 chatData.messageCount = 1;
                 chatData.pendingResponse = false;
                 chatData.isClosed = false;
-                
+
                 // Reset scores
                 Object.keys(chatData.scores).forEach(key => {
                     chatData.scores[key as keyof typeof chatData.scores] = 0;
                 });
-                
+
                 // Update conversation history - keep only this start command
                 chatData.conversationHistory = [{
                     role: "user",
                     content: "/start",
                     timestamp: Date.now()
                 }];
-                
+
                 // Add to processing queue with high priority
                 if (!agentState.processingQueue.includes(chatId as string)) {
                     // Add to beginning of queue for immediate processing
                     agentState.processingQueue.unshift(chatId as string);
                 }
-                
+
                 // Store the username handle
                 if (username) {
                     chatData.telegramUsername = username as string;
                 }
-                
+
                 return new ExecutableGameFunctionResponse(
-                    ExecutableGameFunctionStatus.Done, 
+                    ExecutableGameFunctionStatus.Done,
                     JSON.stringify({
                         chatId,
                         message: "/start",
@@ -334,7 +334,7 @@ const receiveMessageFunction = new GameFunction({
 
             // Initialize or get chat data
             const chatData = initChatData(chatId as string, userId as string, username as string);
-            
+
             // Ensure username is updated even for existing chats
             if (username) {
                 chatData.telegramUsername = username as string;
@@ -361,30 +361,30 @@ const receiveMessageFunction = new GameFunction({
                         conversation_stage: chatData.conversationStage,
                         previous_warnings: "0"
                     }, (msg) => logger(`[process_user_message] ${msg}`));
-                    
+
                     if (messageAnalysisResponse.status === ExecutableGameFunctionStatus.Done) {
                         // Simple string comparison instead of JSON parsing
                         if (messageAnalysisResponse.feedback === "DATA_PRIVACY_QUESTION") {
                             logger(`Detected data privacy question in chat ${chatId}`);
-                            
+
                             // Use the privacy response dictated by requirements
                             const privacyMsg = "All data is secured and encrypted in transit and at rest, the founders have the ability to review the data for further investment.";
-                            
+
                             // Add response to conversation history
                             chatData.conversationHistory.push({
                                 role: "assistant",
                                 content: privacyMsg,
                                 timestamp: Date.now()
                             });
-                            
+
                             // Send message directly
                             await sendTelegramMessage(chatId as string, privacyMsg);
-                            
+
                             // Add to processing queue to continue normal conversation
                             if (!agentState.processingQueue.includes(chatId as string)) {
                                 agentState.processingQueue.push(chatId as string);
                             }
-                            
+
                             return new ExecutableGameFunctionResponse(
                                 ExecutableGameFunctionStatus.Done,
                                 JSON.stringify({
@@ -395,16 +395,16 @@ const receiveMessageFunction = new GameFunction({
                             );
                         } else if (messageAnalysisResponse.feedback === "DIRECT_QUESTION") {
                             logger(`Detected direct process question in chat ${chatId}`);
-                            
+
                             // Add to processing queue with high priority for immediate agent response
                             if (agentState.processingQueue.includes(chatId as string)) {
                                 // Remove from current position
                                 agentState.processingQueue = agentState.processingQueue.filter(id => id !== chatId);
                             }
-                            
+
                             // Add to front of queue for immediate processing
                             agentState.processingQueue.unshift(chatId as string);
-                            
+
                             return new ExecutableGameFunctionResponse(
                                 ExecutableGameFunctionStatus.Done,
                                 JSON.stringify({
@@ -479,82 +479,82 @@ const processConversationFunction = new GameFunction({
             const lastUserMessage = chatData.conversationHistory
                 .filter(msg => msg.role === "user")
                 .sort((a, b) => b.timestamp - a.timestamp)[0];
-                
+
             if (lastUserMessage && lastUserMessage.content.trim() === "/start") {
                 // This is a fresh /start command - send welcome message immediately
                 logger(`Processing /start command for chat ${chatId}`);
-                
+
                 // Reset conversation to welcome state if not already done
                 chatData.conversationStage = 'welcome';
-                
+
                 try {
                     const isReturning = chatData.conversationHistory.filter(msg => msg.role === "user").length > 1;
-                    
+
                     const welcomeResponse = await welcomingFunction.executable({
                         is_returning: isReturning ? "true" : "false",
                         username: chatData.telegramUsername
                     }, (msg) => logger(`[welcome_function] ${msg}`));
-                    
+
                     if (welcomeResponse.status === ExecutableGameFunctionStatus.Done) {
                         try {
                             // No JSON parsing - just get the message directly from the feedback property
                             // The agent will generate the final response text based on its system prompt
                             const welcomeMsg = welcomeResponse.feedback;
-                            
+
                             // Add to conversation history
                             chatData.conversationHistory.push({
                                 role: "assistant",
                                 content: welcomeMsg,
                                 timestamp: Date.now()
                             });
-                            
+
                             // Send welcome message immediately
                             await sendTelegramMessage(chatId as string, welcomeMsg);
                         } catch (parseError) {
                             logger(`Error with welcome response: ${parseError}`);
-                            
+
                             // Fallback welcome message if processing fails
                             const fallbackMsg = `Hello! I'm Wendy from Culture Capital. I'd love to learn about your startup. What are you working on?`;
-                            
+
                             // Add to conversation history
                             chatData.conversationHistory.push({
                                 role: "user",
                                 content: "/start",
                                 timestamp: Date.now()
                             });
-                            
+
                             chatData.conversationHistory.push({
                                 role: "assistant",
                                 content: fallbackMsg,
                                 timestamp: Date.now()
                             });
-                            
+
                             // Send welcome message immediately
                             await sendTelegramMessage(chatId as string, fallbackMsg);
                         }
-                        
+
                         // Remove from processing queue
                         agentState.processingQueue = agentState.processingQueue.filter(id => id !== chatId);
                     }
                 } catch (error) {
                     logger(`Error in welcome function: ${error}`);
-                    
+
                     // Fallback in case of function execution error
                     const errorFallbackMsg = `Hello! I'm Wendy from Culture Capital. I'd love to evaluate your startup. Please tell me about what you're working on.`;
-                    
+
                     // Add to history and send
                     chatData.conversationHistory.push({
                         role: "assistant",
                         content: errorFallbackMsg,
                         timestamp: Date.now()
                     });
-                    
+
                     await sendTelegramMessage(chatId as string, errorFallbackMsg);
-                    
+
                     // Remove from processing queue
                     agentState.processingQueue = agentState.processingQueue.filter(id => id !== chatId);
                 }
-                
+
                 return new ExecutableGameFunctionResponse(
                     ExecutableGameFunctionStatus.Done,
                     "Welcome message handling complete"
@@ -577,25 +577,25 @@ const processConversationFunction = new GameFunction({
                 // If more than 2 hours, proceed to nudge via generateNudgeFunction
                 try {
                     const hoursSinceActivity = Math.floor((Date.now() - chatData.lastActivity) / (60 * 60 * 1000));
-                    
+
                     const nudgeResponse = await generateNudgeFunction.executable({
                         startup_name: chatData.startupName,
                         nudge_count: (chatData.nudgeCount + 1).toString(),
                         last_activity_hours: hoursSinceActivity.toString(),
                         app_id: chatData.appId
                     }, (msg) => logger(`[generate_nudge] ${msg}`));
-                    
+
                     if (nudgeResponse.status === ExecutableGameFunctionStatus.Done) {
                         const nudgeData = JSON.parse(nudgeResponse.feedback);
-                        
+
                         // Increment nudge count
                         chatData.nudgeCount++;
-                        
+
                         // Check if this is a closing nudge (4th)
                         if (nudgeData.is_closing || chatData.nudgeCount >= 4) {
                             chatData.isClosed = true;
                         }
-                        
+
                         // Add to conversation history
                         const nudgeMsg = nudgeData.message;
                         chatData.conversationHistory.push({
@@ -603,13 +603,13 @@ const processConversationFunction = new GameFunction({
                             content: nudgeMsg,
                             timestamp: Date.now()
                         });
-                        
+
                         // Send nudge message
                         await sendTelegramMessage(chatId as string, nudgeMsg);
-                        
+
                         // Remove from processing queue
                         agentState.processingQueue = agentState.processingQueue.filter(id => id !== chatId);
-                        
+
                         return new ExecutableGameFunctionResponse(
                             ExecutableGameFunctionStatus.Done,
                             JSON.stringify({
@@ -633,18 +633,18 @@ const processConversationFunction = new GameFunction({
                         startup_name: chatData.startupName,
                         user_message: lastUserMessage?.content || ""
                     }, (msg) => logger(`[reply_closed] ${msg}`));
-                    
+
                     if (closedResponse.status === ExecutableGameFunctionStatus.Done) {
                         try {
                             // Get the message directly as a string, no parsing needed
                             const closedMsg = closedResponse.feedback;
-                            
+
                             // Send the message directly
                             await sendTelegramMessage(chatId as string, closedMsg);
-                            
+
                             // Remove from processing queue
                             agentState.processingQueue = agentState.processingQueue.filter(id => id !== chatId);
-                            
+
                             return new ExecutableGameFunctionResponse(
                                 ExecutableGameFunctionStatus.Done,
                                 JSON.stringify({
@@ -660,7 +660,7 @@ const processConversationFunction = new GameFunction({
                     }
                 } catch (error) {
                     logger(`Error generating closed conversation response: ${error}`);
-                    
+
                     // Try error recovery
                     try {
                         const errorRecoveryResponse = await errorRecoveryFunction.executable({
@@ -668,33 +668,33 @@ const processConversationFunction = new GameFunction({
                             conversation_stage: "closed",
                             error_type: "closed_response"
                         }, (msg) => logger(`[error_recovery] ${msg}`));
-                        
+
                         if (errorRecoveryResponse.status === ExecutableGameFunctionStatus.Done) {
                             // Get the message directly as a string, no parsing needed
                             const recoveryMsg = errorRecoveryResponse.feedback;
-                            
+
                             // Add to conversation history
                             chatData.conversationHistory.push({
                                 role: "assistant",
                                 content: recoveryMsg,
                                 timestamp: Date.now()
                             });
-                            
+
                             // Send recovery message
                             await sendTelegramMessage(chatId as string, recoveryMsg);
                         }
                     } catch (recoveryError) {
                         logger(`Error in recovery function: ${recoveryError}`);
-                        
+
                         // Direct fallback in case of critical error
                         const absoluteFallbackMsg = "I apologize for the technical difficulty. Let's continue another time. Your conversation has been closed.";
                         await sendTelegramMessage(chatId as string, absoluteFallbackMsg);
                     }
-                    
+
                     // Remove from processing queue regardless
                     agentState.processingQueue = agentState.processingQueue.filter(id => id !== chatId);
                 }
-                
+
                 return new ExecutableGameFunctionResponse(
                     ExecutableGameFunctionStatus.Done,
                     "Closed conversation handling complete"
@@ -709,43 +709,43 @@ const processConversationFunction = new GameFunction({
             // Process based on conversation stage - use appropriate functions for message generation
             try {
                 let responseMsg = "";
-                
+
                 switch (chatData.conversationStage) {
                     case "welcome":
                         // Store initial pitch
                         chatData.startupPitch = lastUserMessages[0].content;
-                        
+
                         // Use replyMessageFunction to generate ask_name response
                         const askNameResponse = await replyMessageFunction.executable({
                             context: "ask_name",
                             startup_name: "",
                             user_message: lastUserMessages[0].content
                         }, (msg) => logger(`[reply_message] ${msg}`));
-                        
+
                         if (askNameResponse.status === ExecutableGameFunctionStatus.Done) {
                             // Get the message directly as a string, no parsing needed
                             responseMsg = askNameResponse.feedback;
                         }
-                        
+
                         chatData.conversationStage = 'startup_name';
                         break;
 
                     case "startup_name":
                         // Store startup name
                         chatData.startupName = lastUserMessages[0].content;
-                        
+
                         // Use replyMessageFunction to generate ask_links response
                         const askLinksResponse = await replyMessageFunction.executable({
                             context: "ask_links",
                             startup_name: chatData.startupName,
                             user_message: lastUserMessages[0].content
                         }, (msg) => logger(`[reply_message] ${msg}`));
-                        
+
                         if (askLinksResponse.status === ExecutableGameFunctionStatus.Done) {
                             // Get the message directly as a string, no parsing needed
                             responseMsg = askLinksResponse.feedback;
                         }
-                        
+
                         chatData.conversationStage = 'links';
                         break;
 
@@ -765,12 +765,12 @@ const processConversationFunction = new GameFunction({
                             startup_name: chatData.startupName,
                             previous_answers: ""
                         }, (msg) => logger(`[questioning_function] ${msg}`));
-                        
+
                         if (firstQuestionResponse.status === ExecutableGameFunctionStatus.Done) {
                             // Get the message directly as a string, no parsing needed
                             responseMsg = firstQuestionResponse.feedback;
                         }
-                        
+
                         chatData.questionCount++;
                         chatData.conversationStage = 'evaluation';
                         break;
@@ -806,7 +806,7 @@ const processConversationFunction = new GameFunction({
                                 total_score: totalScore.toString(),
                                 qualified: qualifies.toString()
                             }, (msg) => logger(`[closing_function] ${msg}`));
-                            
+
                             if (closingResponse.status === ExecutableGameFunctionStatus.Done) {
                                 // Get the message directly as a string, no parsing needed
                                 responseMsg = closingResponse.feedback;
@@ -814,7 +814,7 @@ const processConversationFunction = new GameFunction({
 
                             chatData.isClosed = true;
                             agentState.totalEvaluations++;
-                            
+
                             if (qualifies) {
                                 agentState.totalQualifiedStartups++;
                             }
@@ -855,12 +855,12 @@ const processConversationFunction = new GameFunction({
                             is_returning: "true",
                             username: chatData.telegramUsername
                         }, (msg) => logger(`[welcome_function] ${msg}`));
-                        
+
                         if (resetWelcomeResponse.status === ExecutableGameFunctionStatus.Done) {
                             // Get the message directly as a string, no parsing needed
                             responseMsg = resetWelcomeResponse.feedback;
                         }
-                        
+
                         chatData.conversationStage = 'welcome';
                         break;
                 }
@@ -905,7 +905,7 @@ const processConversationFunction = new GameFunction({
                 );
             } catch (error) {
                 logger(`Error in conversation processing: ${error}`);
-                
+
                 // Use error recovery function instead of hardcoded fallback
                 try {
                     const errorRecoveryResponse = await errorRecoveryFunction.executable({
@@ -913,32 +913,32 @@ const processConversationFunction = new GameFunction({
                         conversation_stage: chatData.conversationStage,
                         error_type: "conversation_processing"
                     }, (msg) => logger(`[error_recovery] ${msg}`));
-                    
+
                     if (errorRecoveryResponse.status === ExecutableGameFunctionStatus.Done) {
                         // Get the message directly as a string, no parsing needed
                         const recoveryMsg = errorRecoveryResponse.feedback;
-                        
+
                         // Add to conversation history
                         chatData.conversationHistory.push({
                             role: "assistant",
                             content: recoveryMsg,
                             timestamp: Date.now()
                         });
-                        
+
                         // Send recovery message
                         await sendTelegramMessage(chatId as string, recoveryMsg);
                     }
                 } catch (recoveryError) {
                     logger(`Error in recovery function: ${recoveryError}`);
-                    
+
                     // Direct fallback in case of critical error
                     const absoluteFallbackMsg = "I apologize for the technical difficulty. Let's try again. Could you tell me about your startup?";
                     await sendTelegramMessage(chatId as string, absoluteFallbackMsg);
                 }
-                
+
                 // Remove from processing queue regardless
                 agentState.processingQueue = agentState.processingQueue.filter(id => id !== chatId);
-                
+
                 return new ExecutableGameFunctionResponse(
                     ExecutableGameFunctionStatus.Done,
                     JSON.stringify({
@@ -1000,7 +1000,7 @@ const processInactiveChatFunction = new GameFunction({
             if (inactiveTime > 2 * 60 * 60 * 1000) { // 2 hours
                 try {
                     const hoursSinceActivity = Math.floor(inactiveTime / (60 * 60 * 1000));
-                    
+
                     // Generate nudge message using generateNudgeFunction
                     const nudgeResponse = await generateNudgeFunction.executable({
                         startup_name: chatData.startupName,
@@ -1008,18 +1008,18 @@ const processInactiveChatFunction = new GameFunction({
                         last_activity_hours: hoursSinceActivity.toString(),
                         app_id: chatData.appId
                     }, (msg) => logger(`[generate_nudge] ${msg}`));
-                    
+
                     if (nudgeResponse.status === ExecutableGameFunctionStatus.Done) {
                         const nudgeData = JSON.parse(nudgeResponse.feedback);
-                        
+
                         // Increment nudge count
                         chatData.nudgeCount++;
-                        
+
                         // Check if this is a closing nudge (4th)
                         if (nudgeData.is_closing || chatData.nudgeCount >= 4) {
                             chatData.isClosed = true;
                         }
-                        
+
                         // Add to conversation history
                         const nudgeMsg = nudgeData.message;
                         chatData.conversationHistory.push({
@@ -1027,13 +1027,13 @@ const processInactiveChatFunction = new GameFunction({
                             content: nudgeMsg,
                             timestamp: Date.now()
                         });
-                        
+
                         // Send nudge message
                         await sendTelegramMessage(chatId as string, nudgeMsg);
-                        
+
                         // Remove from processing queue
                         agentState.processingQueue = agentState.processingQueue.filter(id => id !== chatId);
-                        
+
                         return new ExecutableGameFunctionResponse(
                             ExecutableGameFunctionStatus.Done,
                             JSON.stringify({
@@ -1045,7 +1045,7 @@ const processInactiveChatFunction = new GameFunction({
                     }
                 } catch (error) {
                     logger(`Error generating nudge: ${error}`);
-                    
+
                     // Use error recovery function
                     try {
                         const errorRecoveryResponse = await errorRecoveryFunction.executable({
@@ -1053,40 +1053,40 @@ const processInactiveChatFunction = new GameFunction({
                             conversation_stage: "inactive",
                             error_type: "nudge_generation"
                         }, (msg) => logger(`[error_recovery] ${msg}`));
-                        
+
                         if (errorRecoveryResponse.status === ExecutableGameFunctionStatus.Done) {
                             // Get the message directly as a string, no parsing needed
                             const recoveryMsg = errorRecoveryResponse.feedback;
-                            
+
                             // Increment nudge count
                             chatData.nudgeCount++;
-                            
+
                             // Check if this should be a closing nudge
                             if (chatData.nudgeCount >= 4) {
                                 chatData.isClosed = true;
                             }
-                            
+
                             // Add to conversation history
                             chatData.conversationHistory.push({
                                 role: "assistant",
                                 content: recoveryMsg,
                                 timestamp: Date.now()
                             });
-                            
+
                             // Send recovery message
                             await sendTelegramMessage(chatId as string, recoveryMsg);
                         }
                     } catch (recoveryError) {
                         logger(`Error in recovery function: ${recoveryError}`);
-                        
+
                         // Direct fallback in case of critical error
                         const nudgeMsg = `Hi there! I noticed you haven't responded in a while. Are you still interested in discussing your startup?`;
                         await sendTelegramMessage(chatId as string, nudgeMsg);
-                        
+
                         // Increment nudge count anyway
                         chatData.nudgeCount++;
                     }
-                    
+
                     // Remove from processing queue regardless
                     agentState.processingQueue = agentState.processingQueue.filter(id => id !== chatId);
                 }
@@ -1408,7 +1408,7 @@ This specific response is required for compliance purposes and must be used verb
     // Enhanced logger with timestamps
     agentInstance.setLogger((agent: GameAgent, msg: string) => {
         const timestamp = new Date().toISOString();
-        if (msg.toLowerCase().includes('error') || msg.toLowerCase().includes('exception') || 
+        if (msg.toLowerCase().includes('error') || msg.toLowerCase().includes('exception') ||
             msg.toLowerCase().includes('failed') || msg.toLowerCase().includes('429')) {
             console.log(`🔴 [${timestamp}] [${agent.name}] ERROR:`);
             console.log(msg);

@@ -21,27 +21,28 @@ const welcomingFunction = new GameFunction({
   description: "Generate a personalized welcome message for new or returning users",
   args: [
     { name: "is_returning", description: "Whether this user has conversed before ('true' or 'false')" },
-    { name: "username", description: "User's Telegram username if available" }
+    { name: "username", description: "User's Telegram username if available" },
+    { name: "message", description: "The message to reply" }
   ] as const,
   executable: async (args, logger) => {
     try {
       const isReturning = args.is_returning === "true";
       const username = args.username || "";
-      
+
       logger(`Generating welcome message for ${isReturning ? "returning" : "new"} user${username ? ` with username ${username}` : ""}`);
-      
+
       // Generate different welcome messages based on whether the user is returning
       let welcomeText;
-      
+
       if (isReturning) {
         welcomeText = `Welcome back${username ? ` ${username}` : ""}! I'm glad you've returned to chat with me at Culture Capital. I'd love to hear what you're working on now and evaluate its potential. What can you tell me about your startup?`;
       } else {
         welcomeText = `Hello${username ? ` ${username}` : ""}! I'm Wendy, your AIssociate at Culture Capital. I'd love to learn what you're working on so I can evaluate its potential. Can you tell me about your startup?`;
       }
-      
+
       return new ExecutableGameFunctionResponse(
         ExecutableGameFunctionStatus.Done,
-        welcomeText
+        args.message ?? welcomeText
       );
     } catch (e) {
       const errorMessage = e instanceof Error ? e.message : 'Unknown error';
@@ -66,9 +67,9 @@ const questioningFunction = new GameFunction({
   executable: async (args, logger) => {
     try {
       const { category, question_number, startup_name } = args;
-      
+
       logger(`Generating ${category} question #${question_number} for ${startup_name || "startup"}`);
-      
+
       // Return a direct question string based on category and question number
       let questionText;
       if (category === "market") {
@@ -82,7 +83,7 @@ const questioningFunction = new GameFunction({
       } else {
         questionText = `Tell me about your founding team and their relevant experience in this domain.`;
       }
-      
+
       return new ExecutableGameFunctionResponse(
         ExecutableGameFunctionStatus.Done,
         questionText // Direct string message
@@ -109,12 +110,12 @@ const replyMessageFunction = new GameFunction({
   executable: async (args, logger) => {
     try {
       const { context, startup_name, user_message } = args;
-      
+
       logger(`Generating ${context} response for ${startup_name || "startup"}`);
-      
+
       // Generate appropriate contextual response based on the context
       let responseText;
-      
+
       if (context === "ask_name") {
         responseText = `Thanks for sharing that information! To better evaluate your startup, I'd like to know its name. What's the name of your startup?`;
       } else if (context === "ask_links") {
@@ -126,7 +127,7 @@ const replyMessageFunction = new GameFunction({
       } else {
         responseText = `Thanks for sharing that information about ${startup_name || "your startup"}. Let's continue our evaluation.`;
       }
-      
+
       return new ExecutableGameFunctionResponse(
         ExecutableGameFunctionStatus.Done,
         responseText
@@ -157,9 +158,9 @@ const closingFunction = new GameFunction({
       const { startup_name, app_id, category_scores, total_score, qualified } = args;
       const isQualified = qualified === "true";
       const score = parseInt(total_score || "0");
-      
+
       logger(`Generating final evaluation for ${startup_name || "startup"} with score ${score}/500`);
-      
+
       // Parse the category scores
       let scoresText = "";
       try {
@@ -170,7 +171,7 @@ const closingFunction = new GameFunction({
       } catch (e) {
         scoresText = "Scores unavailable";
       }
-      
+
       // Generate different closing messages based on qualification status
       let qualificationText;
       if (isQualified) {
@@ -178,14 +179,14 @@ const closingFunction = new GameFunction({
       } else {
         qualificationText = `While there are interesting aspects to ${startup_name || "your startup"}, it doesn't currently meet our investment criteria. We encourage you to continue developing your business and consider reapplying in 3-6 months.`;
       }
-      
+
       // Compose the full closing message
       const closingText = `Thank you for sharing details about ${startup_name || "your startup"}!\n\n` +
         `Your application ID is: ${app_id}\n\n` +
         `Here's your evaluation:\n${scoresText}\n` +
         `Total score: ${score}/500\n\n` +
         qualificationText;
-      
+
       return new ExecutableGameFunctionResponse(
         ExecutableGameFunctionStatus.Done,
         closingText
@@ -212,13 +213,13 @@ const processUserMessageFunction = new GameFunction({
   executable: async (args, logger) => {
     try {
       const { message = "", conversation_stage, previous_warnings } = args;
-      
+
       logger(`Analyzing user message at ${conversation_stage} stage`);
-      
+
       // Improved data privacy detection with more variations
       const lowerMessage = message.toLowerCase();
-      const isDataPrivacy = 
-        lowerMessage.includes("data privacy") || 
+      const isDataPrivacy =
+        lowerMessage.includes("data privacy") ||
         lowerMessage.includes("protect my data") ||
         lowerMessage.includes("what will you do with my data") ||
         lowerMessage.includes("what do you do with my data") ||
@@ -231,21 +232,21 @@ const processUserMessageFunction = new GameFunction({
         lowerMessage.includes("share my data") ||
         lowerMessage.includes("data stored") ||
         (lowerMessage.includes("my data") && (
-          lowerMessage.includes("what") || 
+          lowerMessage.includes("what") ||
           lowerMessage.includes("how") ||
-          lowerMessage.includes("asking about") || 
+          lowerMessage.includes("asking about") ||
           lowerMessage.includes("question about")
         )) ||
         (lowerMessage.includes("privacy") && lowerMessage.includes("data"));
-      
+
       // Also detect if user is asking a direct question about the process
-      const isDirectQuestion = 
-        (lowerMessage.startsWith("what") || 
-         lowerMessage.startsWith("how") || 
-         lowerMessage.startsWith("why") ||
-         lowerMessage.includes("?")) &&
+      const isDirectQuestion =
+        (lowerMessage.startsWith("what") ||
+          lowerMessage.startsWith("how") ||
+          lowerMessage.startsWith("why") ||
+          lowerMessage.includes("?")) &&
         !isDataPrivacy; // Don't double-count data privacy questions
-      
+
       // Return appropriate analysis result
       if (isDataPrivacy) {
         return new ExecutableGameFunctionResponse(
@@ -286,16 +287,16 @@ const generateNudgeFunction = new GameFunction({
   executable: async (args, logger) => {
     try {
       const { startup_name, nudge_count, last_activity_hours, app_id } = args;
-      
+
       const count = parseInt(nudge_count || "1");
       const isClosing = count >= 4;
       const hours = parseInt(last_activity_hours || "2");
-      
+
       logger(`Generating ${isClosing ? "closing" : "nudge"} message #${count} for ${startup_name || "startup"}`);
-      
+
       // Generate different nudge messages based on the count
       let nudgeText;
-      
+
       if (isClosing) {
         nudgeText = `Since we haven't heard back from you regarding ${startup_name || "your startup"} in ${hours} hours, I'm closing this evaluation for now. If you're still interested in getting evaluated by Culture Capital, you can start a new conversation anytime by typing /start.`;
       } else if (count === 1) {
@@ -305,7 +306,7 @@ const generateNudgeFunction = new GameFunction({
       } else {
         nudgeText = `This is my final check-in regarding our evaluation of ${startup_name || "your startup"}. If I don't hear back from you soon, I'll need to close this conversation. Would you like to continue?`;
       }
-      
+
       // For this function, we still need to return a structured object
       // since the agent.ts code is looking for specific properties
       return new ExecutableGameFunctionResponse(
@@ -337,12 +338,12 @@ const errorRecoveryFunction = new GameFunction({
   executable: async (args, logger) => {
     try {
       const { startup_name, conversation_stage, error_type } = args;
-      
+
       logger(`Generating error recovery for ${error_type} at ${conversation_stage} stage`);
-      
+
       // Generate different recovery messages based on the error type and conversation stage
       let recoveryText;
-      
+
       if (error_type === "conversation_processing") {
         recoveryText = `I apologize for the technical issue. Let's continue our conversation about ${startup_name || "your startup"}. Could you share more details about what you're building?`;
       } else if (error_type === "closed_response") {
@@ -352,7 +353,7 @@ const errorRecoveryFunction = new GameFunction({
       } else {
         recoveryText = `I apologize for the technical difficulty. Let's continue our conversation${startup_name ? ` about ${startup_name}` : ""}. Could you tell me more about your startup?`;
       }
-      
+
       return new ExecutableGameFunctionResponse(
         ExecutableGameFunctionStatus.Done,
         recoveryText
