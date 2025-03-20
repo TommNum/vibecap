@@ -17,13 +17,44 @@ export class ChatAgent {
         console.log(`[ChatAgent] Creating new chat for partner ${partnerId} (${partnerName})`);
 
         // Initialize chat state
-        this.chats.set(partnerId, getStateFn());
+        const state = options.getStateFn ? options.getStateFn() : {
+            conversationStage: 'welcome',
+            startupName: '',
+            startupPitch: '',
+            startupLinks: [],
+            questionCount: 0,
+            scores: {
+                market: 0,
+                product: 0,
+                traction: 0,
+                financials: 0,
+                team: 0
+            }
+        };
+
+        // Ensure state matches ChatState type
+        const chatState: ChatState = {
+            conversationStage: state.conversationStage || 'welcome',
+            startupName: state.startupName || '',
+            startupPitch: state.startupPitch || '',
+            startupLinks: state.startupLinks || [],
+            questionCount: state.questionCount || 0,
+            scores: {
+                market: state.scores?.market || 0,
+                product: state.scores?.product || 0,
+                traction: state.scores?.traction || 0,
+                financials: state.scores?.financials || 0,
+                team: state.scores?.team || 0
+            }
+        };
+
+        this.chats.set(partnerId, chatState);
 
         return {
             next: async (message: string): Promise<ChatResponse> => {
                 try {
                     // Get current state
-                    const state = getStateFn();
+                    const state = this.chats.get(partnerId);
                     console.log(`[ChatAgent] Sending message to Virtuals API for ${partnerId}:`, message);
 
                     // Make API call to Virtuals API

@@ -209,9 +209,23 @@ async function initializeAgent() {
 // Function to start the VibeCap system
 export async function startVibeCap() {
     try {
+        console.log("Starting VibeCap Venture Analyst...");
+
+        // Initialize database tables
+        // dbService.initTables()
+        //     .then(() => console.log("Database tables initialized"))
+        //     .catch(err => console.error("Error initializing database tables:", err));
+
         // Initialize the agent
         const agent = await initializeAgent();
-        console.log("VibeCap agent initialized successfully");
+
+        // Start the queue processor
+        const queueProcessor = startQueueProcessor();
+
+        // Start polling for Telegram updates - only use ONE method (polling OR webhook)
+        const telegramPoller = initializeTelegramPolling();
+
+        console.log("VibeCap Venture Analyst started successfully!");
 
         // Set up message handler
         telegramPlugin.onMessage(async (msg) => {
@@ -224,52 +238,23 @@ export async function startVibeCap() {
 
             console.log(`Received message from ${username} (${userId}) in chat ${chatId}: ${messageText}`);
 
-            // Get or create chat for this user
-            let chat = chatInstances[chatId];
-            if (!chat) {
-                chat = await chatAgent.createChat({
-                    partnerId: chatId,
-                    partnerName: username || "User",
-                    actionSpace: [
-                        telegramPlugin.sendMessageFunction,
-                        telegramPlugin.sendMediaFunction,
-                        telegramPlugin.createPollFunction,
-                        telegramPlugin.pinnedMessageFunction,
-                        telegramPlugin.unPinnedMessageFunction,
-                        telegramPlugin.deleteMessageFunction
-                    ],
-                });
-                chatInstances[chatId] = chat;
-            }
+            // Get the worker
+            const worker = agent.getWorkerById(telegramPlugin.getWorker().id);
 
-            // Get response from Virtuals API
-            const response = await chat.next(messageText);
-            console.log(`Got response from Virtuals API:`, response);
+            // Create task with proper context
+            const task = `Handle message from user ${username} (${userId}) in chat ${chatId}. Message content: ${messageText}`;
 
-            if (response.functionCall) {
-                console.log(`Function call: ${response.functionCall.fn_name}`);
-                // The function will be automatically executed by the agent
-            }
-
-            if (response.message) {
-                await telegramPlugin.sendMessageFunction.executable({
-                    chat_id: chatId,
-                    text: response.message
-                }, console.log);
-            }
-
-            if (response.isFinished) {
-                await telegramPlugin.sendMessageFunction.executable({
-                    chat_id: chatId,
-                    text: "Chat ended"
-                }, console.log);
-            }
+            // Run the task
+            await worker.runTask(task, {
+                verbose: true,
+            });
         });
 
+        // Return stop function
         return {
             stop: () => {
-                // Cleanup logic here
-                console.log("Stopping VibeCap...");
+                queueProcessor.stop();
+                telegramPoller.stop();
             }
         };
     } catch (error) {
@@ -379,9 +364,11 @@ const receiveMessageFunction = new GameFunction({
                     });
 
                     // Send welcome message immediately
-                    sendTelegramMessage(chatId as string, response.message)
-                        .then(() => console.log(`Sent immediate welcome message to chat ${chatId}`))
-                        .catch(err => console.error(`Error sending welcome message: ${err}`));
+                    telegramPlugin.sendMessageFunction.executable({
+                        chat_id: chatId,
+                        text: response.message
+                    }, (msg) => console.log(`Sent immediate welcome message to chat ${chatId}`))
+                        .catch((error: Error) => console.error(`Error sending welcome message: ${error}`));
                 }
 
                 return new ExecutableGameFunctionResponse(
@@ -538,7 +525,10 @@ const processConversationFunction = new GameFunction({
                     });
 
                     // Send message directly
-                    await sendTelegramMessage(chatId as string, response.message);
+                    await telegramPlugin.sendMessageFunction.executable({
+                        chat_id: chatId,
+                        text: response.message
+                    }, console.log);
                 }
 
                 // Remove from processing queue
@@ -589,7 +579,10 @@ const processConversationFunction = new GameFunction({
 
                 // Send message directly
                 console.log(`[process_conversation] Sending response message to ${chatId}:`, responseMsg);
-                await sendTelegramMessage(chatId as string, responseMsg);
+                await telegramPlugin.sendMessageFunction.executable({
+                    chat_id: chatId,
+                    text: responseMsg
+                }, console.log);
             } else {
                 console.log(`[process_conversation] No message in response for ${chatId}`);
             }
@@ -679,7 +672,10 @@ const processInactiveChatFunction = new GameFunction({
                 });
 
                 // Send directly
-                await sendTelegramMessage(chatId as string, message);
+                await telegramPlugin.sendMessageFunction.executable({
+                    chat_id: chatId,
+                    text: message
+                }, console.log);
 
                 // Remove from processing queue
                 agentState.processingQueue = agentState.processingQueue.filter(id => id !== chatId);
@@ -828,7 +824,10 @@ const handleMessageFunction = new GameFunction({
 
             if (response.message) {
                 // Send message back to user
-                await sendTelegramMessage(chatId, response.message);
+                await telegramPlugin.sendMessageFunction.executable({
+                    chat_id: chatId,
+                    text: response.message
+                }, console.log);
                 return new ExecutableGameFunctionResponse(
                     ExecutableGameFunctionStatus.Done,
                     `Sent response to user: ${response.message}`
@@ -939,9 +938,11 @@ export const handleTelegramUpdate = async (update: any) => {
                 });
 
                 // Send welcome message immediately
-                sendTelegramMessage(chatId, response.message)
-                    .then(() => console.log(`Sent immediate welcome message to chat ${chatId}`))
-                    .catch(err => console.error(`Error sending welcome message: ${err}`));
+                telegramPlugin.sendMessageFunction.executable({
+                    chat_id: chatId,
+                    text: response.message
+                }, (msg) => console.log(`Sent immediate welcome message to chat ${chatId}`))
+                    .catch((error: Error) => console.error(`Error sending welcome message: ${error}`));
             }
         }
 
@@ -1107,64 +1108,4 @@ export function startQueueProcessor() {
     return {
         stop: () => clearInterval(interval)
     };
-}
-
-// =========================================================================
-// APPLICATION STARTUP
-// =========================================================================
-
-export async function startVibeCap() {
-    try {
-        console.log("Starting VibeCap Venture Analyst...");
-
-        // Initialize database tables
-        // dbService.initTables()
-        //     .then(() => console.log("Database tables initialized"))
-        //     .catch(err => console.error("Error initializing database tables:", err));
-
-        // Initialize the agent
-        const agent = await initializeAgent();
-
-        // Start the queue processor
-        const queueProcessor = startQueueProcessor();
-
-        // Start polling for Telegram updates - only use ONE method (polling OR webhook)
-        const telegramPoller = initializeTelegramPolling();
-
-        console.log("VibeCap Venture Analyst started successfully!");
-
-        // Set up message handler
-        telegramPlugin.onMessage(async (msg) => {
-            if (!msg.text) return;
-
-            const chatId = msg.chat.id.toString();
-            const userId = msg.from?.id.toString();
-            const username = msg.from?.username || "";
-            const messageText = msg.text;
-
-            console.log(`Received message from ${username} (${userId}) in chat ${chatId}: ${messageText}`);
-
-            // Get the worker
-            const worker = agent.getWorkerById(telegramPlugin.getWorker().id);
-
-            // Create task with proper context
-            const task = `Handle message from user ${username} (${userId}) in chat ${chatId}. Message content: ${messageText}`;
-
-            // Run the task
-            await worker.runTask(task, {
-                verbose: true,
-            });
-        });
-
-        // Return stop function
-        return {
-            stop: () => {
-                queueProcessor.stop();
-                telegramPoller.stop();
-            }
-        };
-    } catch (error) {
-        console.error("Error starting VibeCap:", error);
-        throw error;
-    }
 }
