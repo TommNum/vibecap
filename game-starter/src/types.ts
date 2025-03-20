@@ -17,7 +17,8 @@ export interface ChatState {
 export interface ChatOptions {
     partnerId: string;
     partnerName: string;
-    getStateFn: () => ChatState;
+    getStateFn?: () => Record<string, any>;
+    actionSpace?: any[]; // Add support for action space functions
 }
 
 export enum FunctionResultStatus {
@@ -39,9 +40,7 @@ export interface Function {
 }
 
 export interface ChatResponse {
-    message: string;
-    functionCall?: {
-        fn_name: string;
-        args: any;
-    };
+    message?: string;
+    functionCall?: any;
+    isFinished?: boolean;
 } 

@@ -175,176 +175,108 @@ const telegramPlugin = new TelegramPlugin({
     name: "Venture Analyst"
 });
 
-// Function to safely send a message to Telegram (with duplicate prevention)
-const sendTelegramMessage = async (chatId: string, text: string): Promise<boolean> => {
-    // Get chat data
-    const chatData = agentState.activeChats[chatId];
-    if (!chatData) return false;
-
-    // Check if this is a duplicate message (sent within the last 30 seconds)
-    const messageHash = `${chatId}:${text}`;
-    const recentMessage = recentMessages.get(messageHash);
-
-    if (recentMessage && (Date.now() - recentMessage.timestamp < 30000)) {
-        console.log(`Preventing duplicate message to chat ${chatId}`);
-        return false;
-    }
-
-    // Check if we're sending the exact same message as the last one
-    if (chatData.lastMessage === text) {
-        console.log(`Preventing duplicate of last message to chat ${chatId}`);
-        return false;
-    }
-
-    try {
-        // First show typing indicator
-        try {
-            await axios.post(
-                `https://api.telegram.org/bot${process.env.TELEGRAM_BOT_TOKEN}/sendChatAction`,
-                { chat_id: chatId, action: 'typing' }
-            );
-        } catch (error) {
-            console.warn("Error sending typing indicator:", error);
-            // Continue anyway since this is non-critical
-        }
-
-        // Wait a bit to simulate typing
-        await new Promise(resolve => setTimeout(resolve, 2000 + Math.random() * 2000));
-
-        // Send the actual message
-        const response = await axios.post(
-            `https://api.telegram.org/bot${process.env.TELEGRAM_BOT_TOKEN}/sendMessage`,
-            { chat_id: chatId, text }
-        );
-
-        // Store as recent message to prevent duplicates
-        recentMessages.set(messageHash, {
-            messageId: response.data.result.message_id,
-            timestamp: Date.now(),
-            content: text
+// Initialize the agent
+async function initializeAgent() {
+    if (!agentInstance) {
+        agentInstance = new GameAgent(process.env.API_KEY || '', {
+            name: "VibeCap Venture Analyst",
+            goal: "Evaluate startups and provide detailed analysis",
+            description: "A venture analyst that evaluates startups through structured conversation, assessing market opportunity, product-market fit, financial health, and team capabilities.",
+            workers: [
+                telegramPlugin.getWorker({
+                    functions: [
+                        telegramPlugin.sendMessageFunction,
+                        telegramPlugin.sendMediaFunction,
+                        telegramPlugin.createPollFunction,
+                        telegramPlugin.pinnedMessageFunction,
+                        telegramPlugin.unPinnedMessageFunction,
+                        telegramPlugin.deleteMessageFunction,
+                    ],
+                }),
+            ],
         });
 
-        // Store as last message
-        chatData.lastMessage = text;
-        chatData.lastQuestionTimestamp = Date.now();
-        chatData.pendingResponse = true;
+        // Set up logging
+        agentInstance.setLogger((agent, message) => {
+            console.log(`[${agent.name}] ${message}`);
+        });
 
-        // Clean up old messages from the recent messages map
-        const now = Date.now();
-        for (const [key, value] of recentMessages.entries()) {
-            if (now - value.timestamp > 120000) { // 2 minutes
-                recentMessages.delete(key);
+        await agentInstance.init();
+    }
+    return agentInstance;
+}
+
+// Function to start the VibeCap system
+export async function startVibeCap() {
+    try {
+        // Initialize the agent
+        const agent = await initializeAgent();
+        console.log("VibeCap agent initialized successfully");
+
+        // Set up message handler
+        telegramPlugin.onMessage(async (msg) => {
+            if (!msg.text) return;
+
+            const chatId = msg.chat.id.toString();
+            const userId = msg.from?.id.toString();
+            const username = msg.from?.username || "";
+            const messageText = msg.text;
+
+            console.log(`Received message from ${username} (${userId}) in chat ${chatId}: ${messageText}`);
+
+            // Get or create chat for this user
+            let chat = chatInstances[chatId];
+            if (!chat) {
+                chat = await chatAgent.createChat({
+                    partnerId: chatId,
+                    partnerName: username || "User",
+                    actionSpace: [
+                        telegramPlugin.sendMessageFunction,
+                        telegramPlugin.sendMediaFunction,
+                        telegramPlugin.createPollFunction,
+                        telegramPlugin.pinnedMessageFunction,
+                        telegramPlugin.unPinnedMessageFunction,
+                        telegramPlugin.deleteMessageFunction
+                    ],
+                });
+                chatInstances[chatId] = chat;
             }
-        }
 
-        return true;
+            // Get response from Virtuals API
+            const response = await chat.next(messageText);
+            console.log(`Got response from Virtuals API:`, response);
+
+            if (response.functionCall) {
+                console.log(`Function call: ${response.functionCall.fn_name}`);
+                // The function will be automatically executed by the agent
+            }
+
+            if (response.message) {
+                await telegramPlugin.sendMessageFunction.executable({
+                    chat_id: chatId,
+                    text: response.message
+                }, console.log);
+            }
+
+            if (response.isFinished) {
+                await telegramPlugin.sendMessageFunction.executable({
+                    chat_id: chatId,
+                    text: "Chat ended"
+                }, console.log);
+            }
+        });
+
+        return {
+            stop: () => {
+                // Cleanup logic here
+                console.log("Stopping VibeCap...");
+            }
+        };
     } catch (error) {
-        console.error("Error sending message to Telegram:", error);
-        return false;
+        console.error("Error starting VibeCap:", error);
+        throw error;
     }
-};
-
-// Helper function to detect bad behavior in user messages
-const detectBadBehavior = (message: string, conversationStage?: string): { isBad: boolean; isRude: boolean; reason: string } => {
-    if (!message) return { isBad: true, isRude: false, reason: "Empty message" };
-
-    // Convert to lowercase for easier matching
-    const lowerMsg = message.toLowerCase().trim();
-
-    // Special cases that should not trigger bad behavior
-    // 1. Handle /start command specifically - this is a standard Telegram command
-    if (lowerMsg === "/start") {
-        return { isBad: false, isRude: false, reason: "" };
-    }
-
-    // 2. Handle data privacy related questions - consider these valid with more lenient detection
-    if (lowerMsg.includes("data privacy") ||
-        lowerMsg.includes("protect my data") ||
-        lowerMsg.includes("what will you do with my data") ||
-        lowerMsg.includes("what do you do with my data") ||
-        lowerMsg.includes("what about my data") ||
-        (lowerMsg.includes("data") && (
-            lowerMsg.includes("secure") ||
-            lowerMsg.includes("protect") ||
-            lowerMsg.includes("use") ||
-            lowerMsg.includes("privacy") ||
-            lowerMsg.includes("how")
-        ))) {
-        return { isBad: false, isRude: false, reason: "" };
-    }
-
-    // Special case: Allow single word responses when asking for startup name
-    if (conversationStage === 'startup_name') {
-        return { isBad: false, isRude: false, reason: "" };
-    }
-
-    // Special case: Allow "No links" response
-    if (lowerMsg === "no links") {
-        return { isBad: false, isRude: false, reason: "" };
-    }
-
-    // NEW: Allow common positive one-word responses and greetings
-    const positiveResponses = [
-        "hi", "hello", "hey", "thanks", "thank", "yes", "yeah", "yep", "sure",
-        "ok", "okay", "great", "good", "nice", "cool", "perfect", "agreed",
-        "correct", "absolutely", "definitely", "exactly", "yo", "sup", "gm",
-        "based", "rizz", "fr", "hit me", "👍", "👋", "🙏", "understood", "got it",
-        "alright", "sounds good", "makes sense", "will do", "noted", "done",
-        "completed", "finished", "sent", "shared", "provided", "submitted",
-        "appreciate it", "thank you", "thanks a lot", "thx", "ty", "tnx",
-        "awesome", "amazing", "excellent", "fantastic", "wonderful", "superb",
-        "brilliant", "terrific", "outstanding", "impressive", "remarkable",
-        "no problem", "np", "anytime", "of course", "certainly", "indeed",
-        "true", "right", "affirmative", "roger that", "10-4", "ack", "acknowledged"
-    ];
-
-    if (positiveResponses.includes(lowerMsg) ||
-        positiveResponses.some(word => lowerMsg === word) ||
-        /^(hi|hey|hello)( there)?!?$/.test(lowerMsg)) {
-        return { isBad: false, isRude: false, reason: "" };
-    }
-
-    // Check for very short messages (except those that might be startup names)
-    if (lowerMsg.split(/\s+/).length < 3 && lowerMsg.length < 15) {
-        return { isBad: true, isRude: false, reason: "Message too short to be meaningful" };
-    }
-
-    // Check for rude content
-    const rudePatterns = [
-        /\b(stupid|dumb|idiot|suck|bad|useless|fool)\b/i,
-        /\b(fuck|shit|crap|ass|bitch)\b/i,
-        /\?{3,}/,  // Multiple question marks often indicate frustration
-        /\byou are\s+([^.]{1,20})\b/i, // "you are X" where X is short (likely an insult)
-    ];
-
-    for (const pattern of rudePatterns) {
-        if (pattern.test(lowerMsg)) {
-            return { isBad: true, isRude: true, reason: "Contains rude or inappropriate language" };
-        }
-    }
-
-    // Check for meaningless or testing messages
-    const testPatterns = [
-        /\b(test|testing)\b/i,
-        /\bwhy\s+(would|should|do|can)\s+i\b/i, // Questioning patterns like "why would I"
-    ];
-
-    for (const pattern of testPatterns) {
-        if (pattern.test(lowerMsg) && lowerMsg.length < 30) {
-            return { isBad: true, isRude: false, reason: "Appears to be a test message without startup information" };
-        }
-    }
-
-    // Check if message discusses the bot itself rather than a startup
-    if (lowerMsg.includes("you") && lowerMsg.length < 50 &&
-        !lowerMsg.includes("startup") && !lowerMsg.includes("company") &&
-        !lowerMsg.includes("product") && !lowerMsg.includes("data")) {
-        return { isBad: true, isRude: false, reason: "Message is about the bot rather than a startup" };
-    }
-
-    // Message passes all checks
-    return { isBad: false, isRude: false, reason: "" };
-};
+}
 
 // =========================================================================
 // WORKER FUNCTIONS
@@ -938,41 +870,6 @@ export const ventureAnalystWorker = new GameWorker({
         };
     }
 });
-
-// =========================================================================
-// AGENT INITIALIZATION AND CONTROL
-// =========================================================================
-
-// Initialize the agent (singleton pattern)
-async function initializeAgent() {
-    if (!agentInstance) {
-        agentInstance = new GameAgent(process.env.API_KEY || '', {
-            name: "VibeCap Venture Analyst",
-            goal: "Evaluate startups and provide detailed analysis",
-            description: "A venture analyst that evaluates startups through structured conversation, assessing market opportunity, product-market fit, financial health, and team capabilities.",
-            workers: [
-                telegramPlugin.getWorker({
-                    functions: [
-                        telegramPlugin.sendMessageFunction,
-                        telegramPlugin.sendMediaFunction,
-                        telegramPlugin.createPollFunction,
-                        telegramPlugin.pinnedMessageFunction,
-                        telegramPlugin.unPinnedMessageFunction,
-                        telegramPlugin.deleteMessageFunction,
-                    ],
-                }),
-            ],
-        });
-
-        // Set up logging
-        agentInstance.setLogger((agent, message) => {
-            console.log(`[${agent.name}] ${message}`);
-        });
-
-        await agentInstance.init();
-    }
-    return agentInstance;
-}
 
 // =========================================================================
 // TELEGRAM WEBHOOK HANDLER 
