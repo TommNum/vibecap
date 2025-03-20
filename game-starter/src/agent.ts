@@ -850,6 +850,73 @@ const processQueueFunction = new GameFunction({
     }
 });
 
+// Create message handling function
+const handleMessageFunction = new GameFunction({
+    name: "handle_message",
+    description: "Handle incoming messages from users and respond appropriately",
+    args: [
+        { name: "chatId", description: "The chat ID where the message was received" },
+        { name: "userId", description: "The user ID who sent the message" },
+        { name: "username", description: "The Telegram username of the sender" },
+        { name: "message", description: "The message content received from the user" }
+    ] as const,
+    executable: async (args, logger) => {
+        try {
+            const { chatId, userId, username, message } = args;
+
+            // Validate required fields
+            if (!chatId || !userId || !message) {
+                return new ExecutableGameFunctionResponse(
+                    ExecutableGameFunctionStatus.Failed,
+                    "Missing required fields: chatId, userId, or message"
+                );
+            }
+
+            logger(`Processing message from ${username || 'anonymous'} (${userId}) in chat ${chatId}: ${message}`);
+
+            // Initialize chat instance if not exists
+            if (!chatInstances[chatId]) {
+                chatInstances[chatId] = await chatAgent.createChat({
+                    partnerId: chatId,
+                    partnerName: username || "User",
+                    getStateFn: () => ({
+                        conversationStage: 'welcome',
+                        startupName: '',
+                        startupPitch: '',
+                        startupLinks: [],
+                        questionCount: 0,
+                        scores: { market: 0, product: 0, traction: 0, financials: 0, team: 0 }
+                    })
+                });
+            }
+
+            // Get response from Virtuals API
+            const response = await chatInstances[chatId].next(message);
+            logger(`Got response from Virtuals API: ${JSON.stringify(response)}`);
+
+            if (response.message) {
+                // Send message back to user
+                await sendTelegramMessage(chatId, response.message);
+                return new ExecutableGameFunctionResponse(
+                    ExecutableGameFunctionStatus.Done,
+                    `Sent response to user: ${response.message}`
+                );
+            }
+
+            return new ExecutableGameFunctionResponse(
+                ExecutableGameFunctionStatus.Failed,
+                "No response message received from Virtuals API"
+            );
+        } catch (error) {
+            logger(`Error handling message: ${error}`);
+            return new ExecutableGameFunctionResponse(
+                ExecutableGameFunctionStatus.Failed,
+                `Failed to handle message: ${error}`
+            );
+        }
+    }
+});
+
 // Create the venture analyst worker
 export const ventureAnalystWorker = new GameWorker({
     id: "venture_analyst",
@@ -859,7 +926,8 @@ export const ventureAnalystWorker = new GameWorker({
         receiveMessageFunction,
         processConversationFunction,
         processInactiveChatFunction,
-        processQueueFunction
+        processQueueFunction,
+        handleMessageFunction
     ],
     getEnvironment: async () => {
         return {
