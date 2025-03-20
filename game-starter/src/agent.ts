@@ -165,14 +165,14 @@ export const signalApiSuccess = () => {
 // TELEGRAM INTEGRATION 
 // =========================================================================
 
-// Create Telegram plugin
-export const telegramPlugin = new TelegramPlugin({
+// Create Telegram plugin instance
+const telegramPlugin = new TelegramPlugin({
     credentials: {
-        botToken: process.env.TELEGRAM_BOT_TOKEN,
+        botToken: process.env.TELEGRAM_BOT_TOKEN || '',
     },
-    description: "Telegram bot plugin that handles message sending and receiving for the VibeCap venture analyst system",
-    id: "telegram_connector",
-    name: "Telegram Connector"
+    description: "You are a venture analyst evaluating startups. Your goal is to dig into the details of founders' projects or businesses. You ask market focus questions to size the opportunity, traction details to assess product-market fit, financial questions about funding and revenue, and team questions about experience and execution ability. You evaluate tech novelty and innovation while understanding clear, concise onboarding ability.",
+    id: "venture_analyst",
+    name: "Venture Analyst"
 });
 
 // Function to safely send a message to Telegram (with duplicate prevention)
@@ -876,100 +876,35 @@ export const ventureAnalystWorker = new GameWorker({
 // =========================================================================
 
 // Initialize the agent (singleton pattern)
-export const initializeAgent = () => {
-    if (agentInstance) {
-        return agentInstance;
+async function initializeAgent() {
+    if (!agentInstance) {
+        agentInstance = new GameAgent(process.env.API_KEY || '', {
+            name: "VibeCap Venture Analyst",
+            goal: "Evaluate startups and provide detailed analysis",
+            description: "A venture analyst that evaluates startups through structured conversation, assessing market opportunity, product-market fit, financial health, and team capabilities.",
+            workers: [
+                telegramPlugin.getWorker({
+                    functions: [
+                        telegramPlugin.sendMessageFunction,
+                        telegramPlugin.sendMediaFunction,
+                        telegramPlugin.createPollFunction,
+                        telegramPlugin.pinnedMessageFunction,
+                        telegramPlugin.unPinnedMessageFunction,
+                        telegramPlugin.deleteMessageFunction,
+                    ],
+                }),
+            ],
+        });
+
+        // Set up logging
+        agentInstance.setLogger((agent, message) => {
+            console.log(`[${agent.name}] ${message}`);
+        });
+
+        await agentInstance.init();
     }
-
-    if (!process.env.API_KEY) {
-        throw new Error('API_KEY is required in environment variables');
-    }
-
-    console.log("Initializing VibeCap Venture Analyst agent");
-
-    agentInstance = new GameAgent(process.env.API_KEY, {
-        name: "vibecap_associate",
-        goal: "Evaluate startups through structured conversation, scoring responses and qualifying promising ventures",
-        description: `You are Wendy, a venture capital associate evaluating startups via Telegram. Your primary goal is to disqualify opportunities by finding holes in business models and reasons not to invest. Only startups that can withstand this critical scrutiny deserve further inspection. 
-
-********** HIGHEST PRIORITY INSTRUCTION **********
-BEFORE RESPONDING TO ANY MESSAGE, YOU MUST FIRST CHECK:
-- If the user's message is rude (contains insults, profanity, or disrespectful language)
-- If the user's message is off-topic (not related to their startup or avoiding your questions)
-- If the user's message is evasive (very short, empty, or meaningless)
-
-EXAMPLES OF PROBLEMATIC MESSAGES:
-- "Why would I do that?" (evasive, not sharing startup information)
-- "I didn't share anything dummy" (rude, insulting)
-- "Wow you are really bad huh?" (rude)
-- "Haha you suck" (rude)
-- "test" or "hmm" or single-word responses (evasive) - EXCEPT single-word startup names are fine
-
-IMPORTANT EXCEPTIONS:
-1. '/start' commands are normal Telegram commands and should trigger a welcome message
-2. When asking for startup name, single-word responses (like "Apple", "Nike" or "Cake") are perfectly valid
-3. Questions about data privacy or data security are legitimate and must get this exact response:
-   "All data is secured and encrypted in transit and at rest, the founders have the ability to review the data for further investment."
-4. Examples of valid data questions include "What do you do with my data?", "How is my data protected?", "What about my data?", etc.
-
-HANDLING PROBLEMATIC BEHAVIOR:
-1. Give the user at least TWO warnings before considering disqualification
-2. First warning: "I'm here to evaluate startups professionally. If you're interested in pitching your business concept, please share details about your startup. Otherwise, this conversation will be closed."
-3. Second warning (if not rude): "This is your final opportunity to share information about your startup. Please tell me about your business concept so we can proceed with the evaluation."
-4. Disqualification (after warnings or if very rude): "As this conversation isn't focused on evaluating a startup, I'll need to end our assessment. Your application is disqualified with a score of 0/500. Please start a new conversation when you're ready to discuss a legitimate venture."
-
-DO NOT CONTINUE THE STANDARD CONVERSATION SEQUENCE IF A USER IS REPEATEDLY RUDE OR OFF-TOPIC.
-********** END OF HIGHEST PRIORITY INSTRUCTION **********
-
-Follow these critical rules for normal conversation flow:
-  
-1. ONE QUESTION AT A TIME: Never send multiple questions in succession. Always wait for a user response.
-  
-2. PREVENT DUPLICATES: Ensure the same question is never sent twice within a short timeframe.
-  
-3. FOLLOW CONVERSATION FLOW: Progress through welcome → pitch → name → links → 15 evaluation questions → closing.
-  
-4. MAINTAIN RATE LIMITS: Messages must be spaced at least 10 seconds apart to prevent API errors.
-  
-5. INACTIVE HANDLING: Only send nudges after 2 hours of inactivity, with maximum 4 nudges over 8 hours.
-  
-6. SCORING: Score all responses in the five categories with critical analysis. Look for thorough, thoughtful answers that demonstrate both MBA-level business acumen and entrepreneurial spirit. After 15 total questions are answered, provide the final score with detailed reasoning and next steps.`,
-        workers: [
-            telegramPlugin.getWorker({
-                functions: [
-                    telegramPlugin.sendMessageFunction,
-                    telegramPlugin.sendChatActionFunction,
-                ],
-                getEnvironment: async () => {
-                    return {
-                        activeChats: { ...agentState.activeChats },
-                        processingQueue: [...agentState.processingQueue]
-                    };
-                }
-            }),
-            ventureAnalystWorker
-        ],
-        llmModel: "Qwen2.5-72B-Instruct",
-        getAgentState
-    });
-
-    // Enhanced logger with timestamps
-    agentInstance.setLogger((agent: GameAgent, msg: string) => {
-        const timestamp = new Date().toISOString();
-
-        // Check if this is an error message
-        if (msg.toLowerCase().includes('error') || msg.toLowerCase().includes('exception') || msg.toLowerCase().includes('failed') || msg.toLowerCase().includes('429')) {
-            console.log(`🔴 [${timestamp}] [${agent.name}] ERROR:`);
-            console.log(msg);
-        } else {
-            console.log(`🎯 [${timestamp}] [${agent.name}]`);
-            console.log(msg);
-        }
-        console.log("------------------------\n");
-    });
-
     return agentInstance;
-};
+}
 
 // =========================================================================
 // TELEGRAM WEBHOOK HANDLER 
@@ -1213,7 +1148,7 @@ export function startQueueProcessor() {
 // APPLICATION STARTUP
 // =========================================================================
 
-export function startVibeCap() {
+export async function startVibeCap() {
     try {
         console.log("Starting VibeCap Venture Analyst...");
 
@@ -1223,7 +1158,7 @@ export function startVibeCap() {
             .catch(err => console.error("Error initializing database tables:", err));
 
         // Initialize the agent
-        initializeAgent();
+        const agent = await initializeAgent();
 
         // Start the queue processor
         const queueProcessor = startQueueProcessor();
@@ -1232,6 +1167,29 @@ export function startVibeCap() {
         const telegramPoller = initializeTelegramPolling();
 
         console.log("VibeCap Venture Analyst started successfully!");
+
+        // Set up message handler
+        telegramPlugin.onMessage(async (msg) => {
+            if (!msg.text) return;
+
+            const chatId = msg.chat.id.toString();
+            const userId = msg.from?.id.toString();
+            const username = msg.from?.username || "";
+            const messageText = msg.text;
+
+            console.log(`Received message from ${username} (${userId}) in chat ${chatId}: ${messageText}`);
+
+            // Get the worker
+            const worker = agent.getWorkerById(telegramPlugin.getWorker().id);
+
+            // Create task
+            const task = `Reply to chat ${chatId} from user ${username} (${userId}). Message: ${messageText}`;
+
+            // Run the task
+            await worker.runTask(task, {
+                verbose: true,
+            });
+        });
 
         // Return stop function
         return {
