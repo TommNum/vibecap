@@ -44,14 +44,48 @@ export class ChatAgent {
                         }
                     );
 
-                    console.log(`[ChatAgent] Received response from Virtuals API for ${partnerId}:`, response.data);
+                    console.log(`[ChatAgent] Raw response from Virtuals API for ${partnerId}:`, JSON.stringify(response.data, null, 2));
+
+                    // Handle different possible response structures
+                    let messageText = '';
+                    let functionCall = null;
+
+                    // Try different possible response structures
+                    if (response.data.message) {
+                        messageText = response.data.message;
+                    } else if (response.data.response) {
+                        messageText = response.data.response;
+                    } else if (response.data.content) {
+                        messageText = response.data.content;
+                    } else if (typeof response.data === 'string') {
+                        messageText = response.data;
+                    }
+
+                    // Handle function calls if present
+                    if (response.data.function_call) {
+                        functionCall = response.data.function_call;
+                    } else if (response.data.functionCall) {
+                        functionCall = response.data.functionCall;
+                    }
+
+                    console.log(`[ChatAgent] Processed response for ${partnerId}:`, {
+                        message: messageText,
+                        functionCall
+                    });
 
                     return {
-                        message: response.data.message,
-                        functionCall: response.data.functionCall
+                        message: messageText,
+                        functionCall
                     };
                 } catch (error) {
                     console.error(`[ChatAgent] Error in chat ${partnerId}:`, error);
+                    if (axios.isAxiosError(error)) {
+                        console.error(`[ChatAgent] API Error details:`, {
+                            status: error.response?.status,
+                            data: error.response?.data,
+                            headers: error.response?.headers
+                        });
+                    }
                     throw error;
                 }
             }
