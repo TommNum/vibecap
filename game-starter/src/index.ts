@@ -16,7 +16,7 @@ async function main() {
         console.log("Starting VibeCap Venture Analyst application...");
 
         // Start the VibeCap system (handles all Telegram interactions)
-        const vibecap = startVibeCap();
+        const vibecap = await startVibeCap();
 
         console.log("VibeCap started successfully!");
 
