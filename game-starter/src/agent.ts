@@ -653,8 +653,10 @@ const processConversationFunction = new GameFunction({
     executable: async (args, logger) => {
         try {
             const { chatId } = args;
+            console.log(`[process_conversation] Starting processing for chat ${chatId}`);
 
             if (!chatId) {
+                console.log(`[process_conversation] Error: Chat ID is required`);
                 return new ExecutableGameFunctionResponse(
                     ExecutableGameFunctionStatus.Failed,
                     "Chat ID is required"
@@ -664,14 +666,18 @@ const processConversationFunction = new GameFunction({
             // Get chat data
             const chatData = agentState.activeChats[chatId as string];
             if (!chatData) {
+                console.log(`[process_conversation] Error: Chat ${chatId} not found in activeChats`);
                 return new ExecutableGameFunctionResponse(
                     ExecutableGameFunctionStatus.Failed,
                     "Chat not found"
                 );
             }
 
+            console.log(`[process_conversation] Found chat data for ${chatId}, stage: ${chatData.conversationStage}`);
+
             // Initialize chat instance if not exists
             if (!chatInstances[chatId]) {
+                console.log(`[process_conversation] Initializing new chat instance for ${chatId}`);
                 chatInstances[chatId] = await chatAgent.createChat({
                     partnerId: chatId,
                     partnerName: chatData.telegramUsername || "User",
@@ -691,15 +697,19 @@ const processConversationFunction = new GameFunction({
                 .filter(msg => msg.role === "user")
                 .sort((a, b) => b.timestamp - a.timestamp);
 
+            console.log(`[process_conversation] Latest user message for ${chatId}:`, lastUserMessages[0]?.content);
+
             // Special handling for /start command
             if (lastUserMessages[0]?.content.trim() === "/start") {
-                logger(`Processing /start command for chat ${chatId}`);
+                console.log(`[process_conversation] Processing /start command for chat ${chatId}`);
                 chatData.conversationStage = 'welcome';
 
                 // Get LLM response
                 const response = await chatInstances[chatId].next("/start");
+                console.log(`[process_conversation] Got /start response for ${chatId}:`, response);
 
                 if (response.message) {
+                    console.log(`[process_conversation] Sending /start response to ${chatId}:`, response.message);
                     // Add to conversation history
                     chatData.conversationHistory.push({
                         role: "assistant",
@@ -713,6 +723,7 @@ const processConversationFunction = new GameFunction({
 
                 // Remove from processing queue
                 agentState.processingQueue = agentState.processingQueue.filter(id => id !== chatId);
+                console.log(`[process_conversation] Removed ${chatId} from processing queue after /start`);
 
                 return new ExecutableGameFunctionResponse(
                     ExecutableGameFunctionStatus.Done,
@@ -728,17 +739,22 @@ const processConversationFunction = new GameFunction({
             let responseMsg = "";
 
             // Get LLM response for the current message
+            console.log(`[process_conversation] Getting LLM response for ${chatId}`);
             const response = await chatInstances[chatId].next(lastUserMessages[0].content);
+            console.log(`[process_conversation] Got LLM response for ${chatId}:`, response);
 
             if (response.message) {
                 responseMsg = response.message;
+                console.log(`[process_conversation] Processing response message for ${chatId}:`, responseMsg);
 
                 // Update conversation stage based on LLM response
                 if (response.functionCall) {
+                    console.log(`[process_conversation] Processing function call for ${chatId}:`, response.functionCall);
                     const functionName = response.functionCall.fn_name;
                     if (functionName === "advance_stage") {
                         const newStage = response.functionCall.args.stage;
                         if (newStage) {
+                            console.log(`[process_conversation] Advancing stage for ${chatId} from ${chatData.conversationStage} to ${newStage}`);
                             chatData.conversationStage = newStage;
                         }
                     }
@@ -752,11 +768,15 @@ const processConversationFunction = new GameFunction({
                 });
 
                 // Send message directly
+                console.log(`[process_conversation] Sending response message to ${chatId}:`, responseMsg);
                 await sendTelegramMessage(chatId as string, responseMsg);
+            } else {
+                console.log(`[process_conversation] No message in response for ${chatId}`);
             }
 
             // Remove from processing queue
             agentState.processingQueue = agentState.processingQueue.filter(id => id !== chatId);
+            console.log(`[process_conversation] Removed ${chatId} from processing queue`);
 
             return new ExecutableGameFunctionResponse(
                 ExecutableGameFunctionStatus.Done,
@@ -768,6 +788,7 @@ const processConversationFunction = new GameFunction({
             );
         } catch (e) {
             const errorMessage = e instanceof Error ? e.message : 'Unknown error';
+            console.error(`[process_conversation] Error processing chat ${args.chatId}:`, e);
             return new ExecutableGameFunctionResponse(
                 ExecutableGameFunctionStatus.Failed,
                 "Failed to process conversation: " + errorMessage
