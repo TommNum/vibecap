@@ -885,6 +885,7 @@ async function initializeAgent() {
             workers: [
                 telegramPlugin.getWorker({
                     functions: [
+                        handleMessageFunction,
                         telegramPlugin.sendMessageFunction,
                         telegramPlugin.sendMediaFunction,
                         telegramPlugin.createPollFunction,
@@ -1182,8 +1183,8 @@ export async function startVibeCap() {
             // Get the worker
             const worker = agent.getWorkerById(telegramPlugin.getWorker().id);
 
-            // Create task
-            const task = `Reply to chat ${chatId} from user ${username} (${userId}). Message: ${messageText}`;
+            // Create task with proper context
+            const task = `Handle message from user ${username} (${userId}) in chat ${chatId}. Message content: ${messageText}`;
 
             // Run the task
             await worker.runTask(task, {
