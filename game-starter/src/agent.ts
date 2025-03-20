@@ -953,7 +953,6 @@ async function initializeAgent() {
             workers: [
                 telegramPlugin.getWorker({
                     functions: [
-                        handleMessageFunction,
                         telegramPlugin.sendMessageFunction,
                         telegramPlugin.sendMediaFunction,
                         telegramPlugin.createPollFunction,
@@ -1169,7 +1168,7 @@ export function initializeTelegramPolling() {
 // Start queue processor
 export function startQueueProcessor() {
     // Initialize the agent
-    const agent = initializeAgent();
+    // const agent = initializeAgent();
 
     // Set up queue processing at reasonable intervals
     const interval = setInterval(async () => {
@@ -1222,9 +1221,9 @@ export async function startVibeCap() {
         console.log("Starting VibeCap Venture Analyst...");
 
         // Initialize database tables
-        dbService.initTables()
-            .then(() => console.log("Database tables initialized"))
-            .catch(err => console.error("Error initializing database tables:", err));
+        // dbService.initTables()
+        //     .then(() => console.log("Database tables initialized"))
+        //     .catch(err => console.error("Error initializing database tables:", err));
 
         // Initialize the agent
         const agent = await initializeAgent();
